@@ -33,10 +33,12 @@ test('normalizeCommandMode adds the bare wenyan shorthand', () => {
   assert.equal(normalizeCommandMode('shrug'), undefined)
 })
 
-test('resolveDefaultMode prefers config, then env, then full', () => {
-  assert.equal(resolveDefaultMode({ configured: 'ultra', env: { CAVEMAN_DEFAULT_MODE: 'lite' } }), 'ultra')
+test('resolveDefaultMode prefers config, then env, then file, then full', () => {
+  assert.equal(resolveDefaultMode({ configured: 'ultra', env: { CAVEMAN_DEFAULT_MODE: 'lite' }, configFile: { defaultMode: 'full' } }), 'ultra')
   assert.equal(resolveDefaultMode({ configured: 'wenyan-full', env: {} }), 'wenyan-full')
   assert.equal(resolveDefaultMode({ env: { CAVEMAN_DEFAULT_MODE: 'wenyan-ultra' } }), 'wenyan-ultra')
+  assert.equal(resolveDefaultMode({ configFile: { defaultMode: 'lite' }, env: {} }), 'lite')
+  assert.equal(resolveDefaultMode({ configFile: { defaultMode: 'nonsense' }, env: {} }), 'full')
   assert.equal(resolveDefaultMode({ env: {} }), 'full')
   assert.equal(resolveDefaultMode({ env: { CAVEMAN_DEFAULT_MODE: 'nonsense' } }), 'full')
   assert.equal(resolveDefaultMode({ env: { CAVEMAN_DEFAULT_MODE: 'review' } }), 'full')

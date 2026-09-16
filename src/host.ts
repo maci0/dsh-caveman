@@ -105,8 +105,36 @@ export interface ToolDefinitionLike {
   readonly parameters: Record<string, unknown>
   /** Canonical output declaration. */
   readonly output: ToolOutputLike
-  /** Run one accepted call; the raw definition owns its input validation. */
-  execute(args: unknown): Promise<unknown>
+  /**
+   * Run one accepted call; the raw definition owns its input validation.
+   *
+   * The harness passes the execution context (carrying the calling agent and
+   * its session) as the second argument.
+   */
+  execute(args: unknown, exec?: ToolExecLike): Promise<unknown>
+}
+
+/** The slice of a tool execution context this plugin reads. */
+export interface ToolExecLike {
+  /** The agent on whose behalf the call runs. */
+  readonly agent?: { readonly session?: unknown } | undefined
+}
+
+/** One session-projection unit state. */
+export interface ProjectionStateLike {
+  /** Cumulative provider-reported token buckets. */
+  readonly totals?: {
+    readonly input?: number
+    readonly output?: number
+    readonly cacheRead?: number
+    readonly cacheWrite?: number
+  } | undefined
+}
+
+/** The slice of the session-projections service this plugin reads. */
+export interface SessionProjectionsLike {
+  /** Read one unit's host state for a session, or `undefined` when absent. */
+  stateOf(session: unknown, key: string): ProjectionStateLike | undefined
 }
 
 /** Invocation handed to a registered human command. */
@@ -181,6 +209,7 @@ export interface HostContext {
     register(definition: CommandDefinitionLike): Disposable
   }
   readonly settings: SettingsServiceLike
+  readonly sessionProjections?: SessionProjectionsLike
 }
 
 /** Hooks a consumer hands to `settings.installSection`. */

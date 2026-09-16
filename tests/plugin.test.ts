@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { apply, CAVEMAN_SETTINGS_NAMESPACE } from '../src/index.ts'
+import { apply, CAVEMAN_SETTINGS_NAMESPACE, readUpstreamConfigFile } from '../src/index.ts'
 import type {
   CommandDefinitionLike,
   HostContext,
@@ -9,6 +9,7 @@ import type {
   SettingsSectionHooksLike,
   SkillProviderLike,
   ToolDefinitionLike,
+  ToolExecLike,
 } from '../src/host.ts'
 
 interface InstallRecord {
@@ -110,10 +111,10 @@ function sectionText(section: PromptSectionContribution | undefined): string {
   return typeof section.text === 'function' ? section.text({}) : section.text
 }
 
-async function callTool(host: { captured: Captured }, args: unknown): Promise<unknown> {
+async function callTool(host: { captured: Captured }, args: unknown, exec?: ToolExecLike): Promise<unknown> {
   const tool = host.captured.tools[0]
   assert.ok(tool)
-  return tool.execute(args)
+  return tool.execute(args, exec)
 }
 
 async function callCommand(host: { captured: Captured }, rawInput: string) {
@@ -131,7 +132,7 @@ test('apply mounts the section, provider, tool, command, and settings namespace'
   assert.equal(host.captured.tools[0]?.name, 'caveman')
   assert.equal(host.captured.commands[0]?.name, 'caveman')
   assert.equal(host.captured.providers.length, 1)
-  assert.equal((await host.captured.providers[0]?.list())?.length, 13)
+  assert.equal((await host.captured.providers[0]?.list())?.length, 14)
 
   const install = host.captured.installs[0]
   assert.ok(install)
@@ -243,6 +244,125 @@ test('the tool renders its canonical value for the model', async () => {
   assert.deepEqual(tool.output.render({}, { mode: 'off', previous: 'full', changed: true, active: false }), [
     { type: 'text', text: 'Caveman off (was full). Normal behavior.' },
   ])
+})
+
+test('the tool answers a one-shot level without persisting it', async () => {
+  const host = createHost()
+  apply(host.ctx, { defaultMode: 'full' })
+
+  assert.deepEqual(await callTool(host, { once: 'ultra' }), {
+    mode: 'ultra', previous: 'full', changed: false, active: true, once: 'ultra',
+  })
+  assert.deepEqual(host.captured.updates, [])
+  assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: full\n\n/)
+
+  const tool = host.captured.tools[0]
+  assert.ok(tool)
+  assert.deepEqual(tool.output.render({ once: 'ultra' }, {
+    mode: 'ultra', previous: 'full', changed: false, active: true, once: 'ultra',
+  }), [
+    { type: 'text', text: 'Caveman level: ultra. The ruleset is injected into every request. Reply to this call in ultra; the persisted level is unchanged.' },
+  ])
+
+  // `mode` wins when both are given; `once` rides along unpersisted.
+  assert.deepEqual(await callTool(host, { mode: 'lite', once: 'ultra' }), {
+    mode: 'lite', previous: 'full', changed: true, active: true, once: 'ultra',
+  })
+
+  await assert.rejects(() => callTool(host, { once: 'shrug' }), /Unknown caveman level/)
+  await assert.rejects(() => callTool(host, { once: 'off' }), /not a reply style/)
+})
+
+test('the tool reports session usage only when asked and available', async () => {
+  const host = createHost()
+  apply(host.ctx, { defaultMode: 'full' })
+  const tool = host.captured.tools[0]
+  assert.ok(tool)
+
+  // No projections service: no usage field, even when asked.
+  assert.deepEqual(await callTool(host, { usage: true }), {
+    mode: 'full', previous: 'full', changed: false, active: true,
+  })
+
+  // With a projections service, usage rides the exec's session.
+  const session = { id: 's1' }
+  const exec = { agent: { session } }
+  const totals = { input: 100, output: 40, cacheRead: 500, cacheWrite: 10 }
+  const projectionsHost = createProjectionsHost(totals)
+  apply(projectionsHost.ctx, { defaultMode: 'full' })
+  const using = projectionsHost.captured.tools[0]
+  assert.ok(using)
+
+  assert.deepEqual(await using.execute({ usage: true }, exec), {
+    mode: 'full', previous: 'full', changed: false, active: true,
+    usage: { input: 100, output: 40, cacheRead: 500, cacheWrite: 10 },
+  })
+  // Not asked: no usage field.
+  assert.deepEqual(await using.execute({}, exec), {
+    mode: 'full', previous: 'full', changed: false, active: true,
+  })
+  // No exec (no session): no usage field.
+  assert.deepEqual(await using.execute({ usage: true }), {
+    mode: 'full', previous: 'full', changed: false, active: true,
+  })
+
+  assert.deepEqual(using.output.render({ usage: true }, {
+    mode: 'full', previous: 'full', changed: false, active: true,
+    usage: { input: 100, output: 40, cacheRead: 500, cacheWrite: 10 },
+  }), [
+    { type: 'text', text: 'Caveman level: full. The ruleset is injected into every request. Session usage so far — input 100, output 40, cache read 500, cache write 10. Savings unknown without a measured comparison.' },
+  ])
+})
+
+/** A host variant whose scope also carries a stub `sessionProjections` service. */
+function createProjectionsHost(totals: { input: number; output: number; cacheRead: number; cacheWrite: number }): {
+  ctx: HostContext
+  captured: Captured
+} {
+  const host = createHost()
+  const ctx = {
+    ...(host.ctx as unknown as Record<string, unknown>),
+    inject: (_dependencies: readonly string[], callback: (scope: HostContext) => void): void => {
+      const scope = {
+        ...(host.ctx as unknown as Record<string, unknown>),
+        sessionProjections: {
+          stateOf: (session: unknown, key: string): unknown =>
+            key === 'tokenUsage' && (session as { id?: string })?.id === 's1' ? { totals } : undefined,
+        },
+      } as unknown as HostContext
+      callback(scope)
+    },
+    on: (host.ctx as unknown as HostContext).on.bind(host.ctx),
+  } as unknown as HostContext
+  return { ctx, captured: host.captured }
+}
+
+test('readUpstreamConfigFile tolerates a missing or broken file', async () => {
+  const { mkdtemp, rm, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+
+  assert.equal(readUpstreamConfigFile(join(tmpdir(), 'caveman-no-such-dir', 'config.json')), undefined)
+
+  const root = await mkdtemp(join(tmpdir(), 'caveman-config-'))
+  try {
+    const missing = join(root, 'missing.json')
+    assert.equal(readUpstreamConfigFile(missing), undefined)
+
+    const broken = join(root, 'broken.json')
+    await writeFile(broken, '{not json')
+    assert.equal(readUpstreamConfigFile(broken), undefined)
+
+    const list = join(root, 'list.json')
+    await writeFile(list, '[]')
+    assert.equal(readUpstreamConfigFile(list), undefined)
+
+    const good = join(root, 'good.json')
+    await writeFile(good, '{ "defaultMode": "ultra" }')
+    assert.deepEqual(readUpstreamConfigFile(good), { defaultMode: 'ultra' })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('apply fails loudly on configuration it cannot honor', () => {

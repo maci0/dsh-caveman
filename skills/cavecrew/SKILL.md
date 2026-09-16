@@ -6,7 +6,21 @@ description: >
   or using `Explore`. Their output is compressed, so main context lasts longer.
 ---
 
-Cavecrew = three subagent presets that emit caveman output. Same job as Anthropic defaults (`Explore`, edit-style agents, reviewer); difference is the tool-result they return is compressed, so main context shrinks per delegation.
+Cavecrew = three subagent prompts that emit caveman output. Same job as Anthropic defaults (`Explore`, edit-style agents, reviewer); difference is the tool-result they return is compressed, so main context shrinks per delegation.
+
+The full prompts live beside this skill as `cavecrew-<role>.md`. DSH has
+no named-agent registry — a child is spawned with an inline prompt — so to
+delegate, call the `subagent` tool with the role file's body as the prompt
+(it names its own output contract, refusal lines, and tool allow-list).
+Concretely: read `agents/cavecrew-investigator.md` (or `-builder`/`-reviewer`)
+from this skill's directory, then invoke e.g.:
+
+> subagent(description="locate token expiry", prompt="< investigator body >\n\nTask: where is token expiry checked?")
+
+Keep the body's Output/Refusals sections verbatim; append only the task line.
+`cavecrew-builder` gets `Read`+`Edit`; `cavecrew-reviewer` gets `Read`+`Bash`
+read-only (`git diff`/`git log -p`/`git show`); `cavecrew-investigator` gets
+`Grep`+`Glob`+`Read` and never edits.
 
 ## When to use cavecrew vs alternatives
 

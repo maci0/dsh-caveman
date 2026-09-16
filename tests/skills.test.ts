@@ -85,6 +85,7 @@ test('discoverSkills reads every bundled skill with a usable description', async
       'caveman',
       'caveman-commit',
       'caveman-compress',
+      'caveman-explore',
       'caveman-help',
       'caveman-review',
       'caveman-stats',
@@ -108,6 +109,22 @@ test('discoverSkills reads every bundled skill with a usable description', async
   assert.match(core.content, /wenyan-full/)
 })
 
+test('bundled resource files travel beside their skills', async () => {
+  const { existsSync } = await import('node:fs')
+  for (const role of ['investigator', 'builder', 'reviewer']) {
+    assert.ok(
+      existsSync(join(skillsDir, 'cavecrew', `cavecrew-${role}.md`)),
+      `cavecrew-${role}.md ships beside the cavecrew skill`,
+    )
+  }
+  for (const script of ['__main__', 'cli', 'compress', 'detect', 'validate']) {
+    assert.ok(
+      existsSync(join(skillsDir, 'caveman-compress', 'scripts', `${script}.py`)),
+      `${script}.py ships beside the caveman-compress skill`,
+    )
+  }
+})
+
 test('discoverSkills reports and skips an unreadable directory', async () => {
   const warnings: string[] = []
   const skills = await discoverSkills(join(packageRoot, 'does-not-exist'), (message) => warnings.push(message))
@@ -122,7 +139,7 @@ test('the provider lists candidates and loads their bodies', async () => {
   const candidates = await provider.list()
 
   assert.equal(provider.name, 'caveman')
-  assert.equal(candidates.length, 13)
+  assert.equal(candidates.length, 14)
   for (const candidate of candidates) {
     assert.equal(candidate.rank, BUNDLED_SKILL_RANK)
     assert.equal(candidate.source, 'bundled')

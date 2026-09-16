@@ -1,17 +1,30 @@
 ---
 name: caveman-stats
 description: >
-  Show recorded output and cache-read token usage and mode attribution for
-  the current Claude Code session, or locate the host's native usage report.
+  Show this session's provider-reported token usage (input, output, cache
+  read/write) via the caveman tool, or locate the host's native usage report.
   Trigger: /caveman-stats.
 ---
 
-In Claude Code, `src/hooks/caveman-mode-tracker.js` resolves `src/hooks/caveman-stats.js` next to itself and runs it on `/caveman-stats`. The hook does not block the prompt: it supplies the report through `hookSpecificOutput.additionalContext` with an instruction to print it verbatim inside a fenced code block. Do exactly that, and do not calculate, recompute or re-round the numbers yourself.
+Call the `caveman` tool with `{ "usage": true }`. It reads the host's
+`tokenUsage` session projection — cumulative provider-reported totals for this
+session — and renders one line:
 
-In Gemini CLI, direct the user to `/stats model` for current session token usage or `/stats session` for session statistics. Gemini custom commands are prompts; they cannot invoke the built-in command or read its live session metrics. Never read Claude Code transcripts as Gemini usage. In other hosts, use a native usage report if one is available; otherwise say that current session usage is unavailable. The Claude reader and its lifetime history apply only to Claude Code. Savings remain unknown in every host without a measured comparison.
+> Session usage so far — input N, output N, cache read N, cache write N.
+> Savings unknown without a measured comparison.
 
-The report shows recorded output and cache-read tokens, response counts, and mode attribution where available. Savings are unknown: the transcript has no measured comparison without Caveman. Do not infer saved tokens, percentages, dollars, rule overhead, or a net result from output counts or the current mode.
+Print that line verbatim inside a fenced code block. Do not calculate,
+recompute, or re-round the numbers yourself.
 
-`--all` and `--since 7d` aggregate the latest recorded output count per session. `--share` reports observed usage with savings unknown. Historical `est_saved_*` fields are ignored; their original history rows remain on disk. The statusline shows the active mode without the retired savings badge.
+When the tool returns no `usage` field, the host mounts no usage projection:
+say current session usage is unavailable rather than inventing a number. In
+other hosts, use a native usage report if one is available.
 
-Original/current memory-file pairs are reported by their measured byte sizes. Those file-size differences do not establish provider token or billing savings. See `docs/HONEST-NUMBERS.md`.
+Savings are unknown in every host without a measured comparison: the log has
+no unbuilt baseline to subtract. Do not infer saved tokens, percentages,
+dollars, rule overhead, or a net result from output counts or the current
+mode.
+
+Original/current memory-file pairs are reported by their measured byte sizes.
+Those file-size differences do not establish provider token or billing
+savings.

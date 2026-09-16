@@ -104,7 +104,7 @@ After the profile patch save (and a **page refresh** of the Web client the first
 
 | Field | Default | Meaning |
 |---|---|---|
-| `defaultMode` | `CAVEMAN_DEFAULT_MODE`, then `full` | The composition-layer level. The user's settings namespace overrides it. Must be one of the seven levels. |
+| `defaultMode` | row config, then `CAVEMAN_DEFAULT_MODE`, then `~/.config/caveman/config.json`, then `full` | The composition-layer level. The user's settings namespace overrides it. Must be one of the seven levels. |
 
 Invalid configuration fails while the plugin loads rather than silently doing
 the wrong thing.
@@ -113,20 +113,19 @@ the wrong thing.
 
 | Skill | Trigger | What it does |
 |---|---|---|
-| **caveman** | `/caveman` | Terse mode itself. `/caveman wenyan` for 文言文. |
-| **cavecrew** | delegation | Decision guide for the three compressed subagent presets (investigator/builder/reviewer) vs vanilla. |
+| **caveman** | `/caveman` | Terse mode itself. `/caveman wenyan` for 文言文. Tool also takes per-call `once` (unpersisted) and `usage` (session totals). |
+| **cavecrew** | delegation | Decision guide + three spawnable prompts (`cavecrew-*.md` beside the skill) for investigator/builder/reviewer via the `subagent` tool. |
 | **caveman-commit** | `/caveman-commit` | Terse Conventional Commit messages. |
 | **caveman-review** | `/caveman-review` | One-line, actionable review findings. |
-| **caveman-compress** | `/caveman-compress <file>` | Smaller Markdown memory files, original backed up out-of-tree. |
-| **caveman-stats** | `/caveman-stats` | Recorded session token usage; savings unknown without a measured comparison. |
+| **caveman-compress** | `/caveman-compress <file>` | Smaller Markdown memory files via bundled `scripts/`, original backed up out-of-tree. |
+| **caveman-explore** | delegation | Read-only repo explorer returning `path:line` citations. |
+| **caveman-stats** | `/caveman-stats` | Session token usage via `caveman({usage:true})`; savings unknown without a measured comparison. |
 | **caveman-help** | `/caveman-help` | One-screen reminder of every mode and command. |
 | **investigate-first**, **lean-build**, **surgical-patch**, **safe-refactor**, **migration**, **verify-and-stop** | auto | Work patterns the agent picks up when a task fits. |
 
-Upstream's `caveman-setup/-discover/-learn/-manage/-optimize/-explore/-evidence-review`
+Upstream's `caveman-setup/-discover/-learn/-manage/-optimize/-evidence-review`
 drive the caveman engine and proxy (local Go runtime / Cloud gateway) and are
-**not** bundled: that runtime has no harness extension point. Likewise the
-`caveman-compress` `scripts/` helper shells out to a Claude CLI, so in DSH it
-runs as prose instructions. See Limits.
+**not** bundled: that runtime has no harness extension point. See Limits.
 
 ## Layout
 
@@ -138,7 +137,10 @@ src/frontmatter.ts  minimal frontmatter reader (plain, `>`, `|`, quoted scalars)
 src/host.ts         structural declaration of the host surface
 lib/client.js       browser half: the settings card + the composer chip (loader factory format)
 cordis.patch.yml    the Loader row to paste into the profile's live-watched patch
-skills/             the thirteen skills, verbatim from upstream
+skills/             fourteen skills (caveman core + cavecrew + explore verbatim from upstream);
+                    cavecrew ships its three spawnable prompts as cavecrew-*.md beside its SKILL.md;
+                    caveman-compress ships its scripts/ helper (needs python3 + a Claude route:
+                    ANTHROPIC_API_KEY or the `claude` CLI)
 tests/              node:test unit + fake-host integration coverage
 ```
 
@@ -185,9 +187,11 @@ and delete the `id: caveman` row from
 - **External subagents are out of reach.** In-process children join the parent
   composition and inherit the ruleset, but `subagent-claude-code` and
   `subagent-codex` spawn their own CLI with its own system prompt, and no
-  harness extension point wraps a spawn. So upstream's `cavecrew-*` agent
-  definitions ship only as the `cavecrew` decision guide, not as spawnable DSH
-  subagents.
+  harness extension point wraps a spawn. So the `cavecrew-*` prompts target the
+  plain in-process `subagent` tool only.
+- **Usage needs the host meter.** `caveman({usage:true})` reads the
+  token-meter `tokenUsage` projection; without it the field is absent and
+  `/caveman-stats` says unavailable. Counts only, never savings.
 - **`emit` modes**: a level change is not announced as a session event; a
   replayed session shows the ruleset each request already carried.
 
@@ -196,9 +200,12 @@ and delete the `id: caveman` row from
 MIT. Skill content: © JuliusBrussee
 ([caveman](https://github.com/JuliusBrussee/caveman)). DSH port: see `LICENSE`.
 
-The thirteen `skills/*/SKILL.md` files are verbatim copies. Upstream's numbers
-(JetBrains: 8.5% fewer output tokens, skill only; Adobe CAVEWOMAN: 1.4–2.4×
-output-side cost cut; proxy benchmark: −33.2% input tokens) are upstream's, not
-this package's — this port ships the skill half only, so only the skill-side
-figures apply. Both the files and the figures are left as written rather than
-forked, because a fork re-diverges at every upstream sync.
+The fourteen `skills/*/SKILL.md` files are verbatim copies, except
+`caveman-stats` (rewired to this plugin's `usage` field) and two added
+paragraphs in `cavecrew` (how to spawn via the `subagent` tool). The
+`cavecrew-*.md` prompts and `caveman-compress/scripts/` are verbatim too.
+Upstream's numbers (JetBrains: 8.5% fewer output tokens, skill only; Adobe
+CAVEWOMAN: 1.4–2.4× output-side cost cut; proxy benchmark: −33.2% input
+tokens) are upstream's, not this package's — this port ships the skill half
+only, so only the skill-side figures apply. Verbatim files stay verbatim
+rather than forked, because a fork re-diverges at every upstream sync.

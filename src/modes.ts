@@ -91,12 +91,15 @@ export interface DefaultModeSources {
   readonly configured?: string | undefined
   /** Environment lookup; defaults to `process.env`. */
   readonly env?: Record<string, string | undefined> | undefined
+  /** Parsed upstream config file (`~/.config/caveman/config.json`); lowest config priority. */
+  readonly configFile?: { readonly defaultMode?: unknown } | undefined
 }
 
 /**
  * Resolve the level a fresh process starts in.
  *
- * Order: this plugin's config field, then `CAVEMAN_DEFAULT_MODE`, then `full`.
+ * Order: this plugin's config field, then `CAVEMAN_DEFAULT_MODE`, then the
+ * upstream config file (`~/.config/caveman/config.json`), then `full`.
  * @param sources - injectable overrides for tests.
  * @returns the resolved startup level.
  */
@@ -106,6 +109,9 @@ export function resolveDefaultMode(sources: DefaultModeSources = {}): RuntimeMod
 
   const envMode = normalizeMode((sources.env ?? process.env)['CAVEMAN_DEFAULT_MODE'])
   if (envMode !== undefined) return envMode
+
+  const fileMode = normalizeMode(sources.configFile?.defaultMode)
+  if (fileMode !== undefined) return fileMode
 
   return DEFAULT_MODE
 }

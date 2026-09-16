@@ -22,9 +22,10 @@
  * @module dsh-caveman
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import {
   buildModeInstructions,
@@ -44,9 +45,12 @@ import type {
   CommandInvocationLike,
   CommandResultLike,
   HostContext,
+  ProjectionStateLike,
   SessionMessageLike,
+  SessionProjectionsLike,
   SettingsServiceLike,
   ToolDefinitionLike,
+  ToolExecLike,
 } from './host.ts'
 
 /** Plugin name as it appears in the loader. */
@@ -84,6 +88,36 @@ const DEFAULT_PROMPT_ORDER = 700
 /** Section name of the injected ruleset. */
 const SECTION_NAME = 'caveman'
 
+/** Upstream config file, read the way upstream reads it. */
+const UPSTREAM_CONFIG_PATH = join(homedir(), '.config', 'caveman', 'config.json')
+
+/**
+ * Read the upstream config file's `defaultMode`, ignoring everything that
+ * would make startup fail: a missing file, an unreadable file, invalid JSON,
+ * or a non-object document all mean "no file default".
+ * @param path - config file path; the upstream location unless tests override it.
+ * @returns the parsed document, or `undefined` when there is nothing usable.
+ */
+export function readUpstreamConfigFile(
+  path: string = UPSTREAM_CONFIG_PATH,
+): { readonly defaultMode?: unknown } | undefined {
+  let source: string
+  try {
+    if (!existsSync(path)) return undefined
+    source = readFileSync(path, 'utf8')
+  } catch {
+    return undefined
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(source)
+  } catch {
+    return undefined
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+  return parsed as { readonly defaultMode?: unknown }
+}
+
 /**
  * Mount the plugin.
  * @param ctx - the host context.
@@ -99,7 +133,10 @@ export function apply(ctx: HostContext, config: Config = {}): void {
 
   // `<package>/skills`, resolved from this module's own location.
   const skillsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills')
-  const startup = resolveDefaultMode({ configured: config.defaultMode })
+  const startup = resolveDefaultMode({
+    configured: config.defaultMode,
+    configFile: readUpstreamConfigFile(),
+  })
   // Parsed once, at load: the ruleset is filtered per assembly, so the
   // frontmatter must not have to be re-read for every request. A missing body
   // means a broken install: fail while loading rather than injecting a silently
@@ -202,7 +239,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
   })
 
   ctx.inject(['tools'], (scope) => {
-    scope.tools.register(createModeTool(activeMode, setMode))
+    scope.tools.register(createModeTool(activeMode, setMode, (exec) => readSessionUsage(scope, exec)))
   })
 
   ctx.inject(['commands'], (scope) => {
@@ -250,14 +287,49 @@ function userMessageText(data: unknown): string | undefined {
 }
 
 /**
+ * Read this session's cumulative provider-reported usage through the
+ * token-meter `tokenUsage` projection, when the host mounts it.
+ *
+ * Counts only what the provider reported — never a saving, a percentage, or
+ * a cost. `undefined` when the service, the session, or the unit is absent.
+ * @param scope - the tools-callback scope, which may carry `sessionProjections`.
+ * @param exec - the tool execution, carrying the calling agent's session.
+ * @returns the usage totals, or `undefined`.
+ */
+function readSessionUsage(
+  scope: HostContext,
+  exec: ToolExecLike | undefined,
+): SessionUsage | undefined {
+  const projections: SessionProjectionsLike | undefined = scope.sessionProjections
+  const session: unknown = exec?.agent?.session
+  if (projections === undefined || session === undefined) return undefined
+  let state: ProjectionStateLike | undefined
+  try {
+    state = projections.stateOf(session, 'tokenUsage')
+  } catch {
+    return undefined
+  }
+  const totals = state?.totals
+  if (totals === undefined) return undefined
+  return {
+    input: totals.input ?? 0,
+    output: totals.output ?? 0,
+    cacheRead: totals.cacheRead ?? 0,
+    cacheWrite: totals.cacheWrite ?? 0,
+  }
+}
+
+/**
  * Build the model-facing level tool.
  * @param getMode - reads the active level.
  * @param setMode - applies and persists a level.
+ * @param getUsage - reads this session's provider-reported usage, when available.
  * @returns the raw tool definition.
  */
 function createModeTool(
   getMode: () => CavemanMode,
   setMode: (next: CavemanMode) => Promise<{ previous: CavemanMode; mode: CavemanMode; changed: boolean }>,
+  getUsage?: (exec: ToolExecLike | undefined) => SessionUsage | undefined,
 ): ToolDefinitionLike {
   return {
     name: 'caveman',
@@ -266,14 +338,24 @@ function createModeTool(
     description:
       'Set or report the caveman level, which governs how terse replies are. '
       + 'The level persists in the user settings document. '
-      + 'Call with no arguments to report the current level.',
+      + 'Call with no arguments to report the current level. '
+      + 'A per-call `mode` applies to this call only and is not persisted.',
     parameters: {
       type: 'object',
       properties: {
         mode: {
           type: 'string',
           enum: [...VALID_MODES],
-          description: 'Level to activate. Omit to report the current level.',
+          description: 'Level to activate and persist. Omit to report the current level.',
+        },
+        once: {
+          type: 'string',
+          enum: [...VALID_MODES.filter((mode) => mode !== 'off')],
+          description: 'Level for this call only. Not persisted; `mode` wins when both are given.',
+        },
+        usage: {
+          type: 'boolean',
+          description: 'Include this session’s provider-reported token totals (input, output, cache read/write). Never a saving.',
         },
       },
       additionalProperties: false,
@@ -286,17 +368,37 @@ function createModeTool(
           previous: { type: 'string', enum: [...VALID_MODES] },
           changed: { type: 'boolean' },
           active: { type: 'boolean' },
+          once: { type: 'string', enum: [...VALID_MODES.filter((mode) => mode !== 'off')] },
+          usage: {
+            type: 'object',
+            properties: {
+              input: { type: 'number' },
+              output: { type: 'number' },
+              cacheRead: { type: 'number' },
+              cacheWrite: { type: 'number' },
+            },
+            required: ['input', 'output', 'cacheRead', 'cacheWrite'],
+            additionalProperties: false,
+          },
         },
         required: ['mode', 'previous', 'changed', 'active'],
         additionalProperties: false,
       },
       render: (_args, value) => [{ type: 'text', text: renderModeResult(value) }],
     },
-    async execute(args) {
+    async execute(args, exec) {
       const requested = readModeArgument(args)
+      const once = readOnceArgument(args)
       const previous = getMode()
       if (requested === undefined) {
-        return { mode: previous, previous, changed: false, active: previous !== 'off' }
+        return {
+          mode: once ?? previous,
+          previous,
+          changed: false,
+          active: (once ?? previous) !== 'off',
+          ...(once !== undefined ? { once } : {}),
+          ...usageField(args, exec, getUsage),
+        }
       }
 
       const applied = await setMode(requested)
@@ -305,9 +407,36 @@ function createModeTool(
         previous: applied.previous,
         changed: applied.changed,
         active: applied.mode !== 'off',
+        ...(once !== undefined ? { once } : {}),
+        ...usageField(args, exec, getUsage),
       }
     },
   }
+}
+
+/** This session's provider-reported usage, or `undefined` when unavailable. */
+interface SessionUsage {
+  readonly input: number
+  readonly output: number
+  readonly cacheRead: number
+  readonly cacheWrite: number
+}
+
+/**
+ * Read the optional `usage` flag's field: the session totals when asked and
+ * available, otherwise nothing. Savings are never inferred — the log has no
+ * unbuilt baseline to subtract.
+ */
+function usageField(
+  args: unknown,
+  exec: ToolExecLike | undefined,
+  getUsage: ((exec: ToolExecLike | undefined) => SessionUsage | undefined) | undefined,
+): { readonly usage?: SessionUsage } {
+  if (getUsage === undefined) return {}
+  if (args === null || typeof args !== 'object') return {}
+  if ((args as Record<string, unknown>)['usage'] !== true) return {}
+  const usage = getUsage(exec)
+  return usage === undefined ? {} : { usage }
 }
 
 /**
@@ -329,6 +458,31 @@ function readModeArgument(args: unknown): CavemanMode | undefined {
     )
   }
   return mode
+}
+
+/**
+ * Read the optional per-call `once` argument. It applies to the reply being
+ * composed only and is never persisted — upstream's stateless `/caveman <mode>`
+ * prefix behavior, without a flag file.
+ * @param args - losslessly snapshotted model arguments.
+ * @returns the one-shot level, or `undefined` when not asked.
+ */
+function readOnceArgument(args: unknown): CavemanMode | undefined {
+  if (args === null || typeof args !== 'object') return undefined
+
+  const raw = (args as Record<string, unknown>)['once']
+  if (raw === undefined || raw === null || raw === '') return undefined
+
+  const once = normalizeConfigMode(raw)
+  if (once === undefined) {
+    throw new Error(
+      `Unknown caveman level ${JSON.stringify(raw)}. Use one of: ${VALID_MODES.filter((mode) => mode !== 'off').join(', ')}.`,
+    )
+  }
+  if (once === 'off') {
+    throw new Error('`once: "off"` is not a reply style; omit `once` or pick a level.')
+  }
+  return once
 }
 
 /**
@@ -357,10 +511,18 @@ function renderModeResult(value: unknown): string {
   const previous = typeof record['previous'] === 'string' ? record['previous'] : mode
   const changed = record['changed'] === true
   const active = record['active'] === true
+  const once = typeof record['once'] === 'string' ? record['once'] : undefined
+  const usage = record['usage'] as Record<string, unknown> | undefined
 
-  if (!changed && !active) return 'Caveman is off. Normal behavior.'
-  const sentence = modeSentence(mode, previous, changed)
-  return active ? `${sentence} The ruleset is injected into every request.` : sentence
+  const core = (!changed && !active)
+    ? 'Caveman is off. Normal behavior.'
+    : active
+      ? `${modeSentence(mode, previous, changed)} The ruleset is injected into every request.`
+      : modeSentence(mode, previous, changed)
+  const onceLine = once !== undefined ? ` Reply to this call in ${once}; the persisted level is unchanged.` : ''
+  if (usage === undefined) return `${core}${onceLine}`
+  const line = (name: string): number => typeof usage[name] === 'number' ? usage[name] as number : 0
+  return `${core}${onceLine} Session usage so far — input ${line('input')}, output ${line('output')}, cache read ${line('cacheRead')}, cache write ${line('cacheWrite')}. Savings unknown without a measured comparison.`
 }
 
 /**

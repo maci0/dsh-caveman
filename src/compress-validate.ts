@@ -171,13 +171,19 @@ export function countBullets(text: string): number {
 }
 
 export function extractInlineCodes(text: string): string[] {
-  let stripped = text
-  for (const block of extractCodeBlocks(text)) {
-    stripped = stripped.replace(block, '')
+  // Single pass: blank fenced spans by line range instead of one full-string
+  // replace per block (O(blocks × file)). Same result — fence bodies never
+  // contribute inline spans.
+  const lines = text.split('\n')
+  const fenced = new Set<number>()
+  for (const [start, end] of extractFencedSpans(lines)) {
+    for (let i = start; i < end; i += 1) fenced.add(i)
   }
-  stripped = stripped
-    .split('\n')
-    .map((line) => (FENCE_MARKER_LINE_REGEX.test(line) ? '' : line))
+  const stripped = lines
+    .map((line, index) => {
+      if (fenced.has(index)) return ''
+      return FENCE_MARKER_LINE_REGEX.test(line) ? '' : line
+    })
     .join('\n')
   return [...stripped.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? '')
 }

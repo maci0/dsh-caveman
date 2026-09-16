@@ -161,6 +161,13 @@ export interface InstructionInput {
 }
 
 /**
+ * Cache of built instruction blocks. The skill body is parsed once at load
+ * and the level set is fixed, so at most seven entries ever exist; assembly
+ * reads the same block every request instead of re-filtering lines.
+ */
+const instructionCache = new Map<string, string>()
+
+/**
  * Build the exact text the system prompt carries for one level.
  * @param input - the active level and the skill body.
  * @returns the instruction block, or `''` when the level is `off`.
@@ -170,6 +177,11 @@ export function buildModeInstructions(input: InstructionInput): string {
   if (mode === 'off') return ''
 
   const effective = normalizeMode(mode) ?? DEFAULT_MODE
-  return 'CAVEMAN MODE ACTIVE — level: ' + effective + '\n\n' +
+  const cached = instructionCache.get(effective)
+  if (cached !== undefined) return cached
+
+  const built = 'CAVEMAN MODE ACTIVE — level: ' + effective + '\n\n' +
     filterSkillBodyForMode(input.skillBody, effective)
+  instructionCache.set(effective, built)
+  return built
 }

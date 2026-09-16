@@ -21,38 +21,52 @@ const FENCE_OPEN_REGEX = /^[ ]{0,3}(`{3,}|~{3,})(?:[^\r\n]*)$/
 const CODE_MARKER_PREFIX = '@@CAVEMAN_PRESERVED_CODE_'
 const LIST_ITEM_REGEX = /^\s*(?:[-*+]|\d+[.)])\s/
 
-/** Articles dropped everywhere outside code. */
-const ARTICLES = /\b(a|an|the)\b\s*/gi
+/**
+ * One-pass rewrite: every drop-or-shorten rule as one alternation with a
+ * lookup replacer, so each line is scanned once instead of once per rule.
+ * Groups: 1 = drop entirely, 2 = keep word, 3 = replace with `to`,
+ * 4 = replace with `because`, 5 = replace with `fix`, 6 = `use`, 7 = `big`.
+ */
+const REWRITE = new RegExp(
+  [
+    /\bit might be worth\b\s*/.source,
+    /\byou could consider\b\s*/.source,
+    /\bit would be good to\b\s*/.source,
+    /\byou might want to\b\s*/.source,
+    /\bit seems (?:like |that )?/.source,
+    /\b(?:perhaps|maybe)\b\s*/.source,
+    /\bmake sure to\b\s*/.source,
+    /\bremember to\b\s*/.source,
+    /\byou should (?:always )?\b\s*/.source,
+    String.raw`\b(?:it is|it's|this is) important (?:to|because|that)\b\s*`,
+    /\bsure\b[,.!]?\s*/.source,
+    /\bcertainly\b[,.!]?\s*/.source,
+    /\bof course\b[,.!]?\s*/.source,
+    /\bhappy to\b[,.!]?\s*/.source,
+    String.raw`\bi'd recommend\b[,.!]?\s*`,
+    String.raw`\bwe'd recommend\b[,.!]?\s*`,
+    /\bplease note that\b\s*/.source,
+    /\bplease\b[,.!]?\s*/.source,
+    /\b(?:just|really|basically|actually|simply|essentially|generally|very|quite|rather)\b\s*/.source,
+    /\b(?:a|an|the)\b\s*/.source,
+    /(\bin order to\b)/.source,
+    /(\bthe reason (?:is|why) because\b)/.source,
+    /(\bdue to the fact that\b)/.source,
+    /(\bimplement a solution for\b)/.source,
+    /(\butilize\b)/.source,
+    /(\bextensive\b)/.source,
+  ].join('|'),
+  'gi',
+)
 
-/** Filler adverbs and adjectives dropped everywhere outside code. */
-const FILLER = /\b(just|really|basically|actually|simply|essentially|generally|very|quite|rather)\b\s*/gi
-
-/** Pleasantries and recommendations dropped outside code. */
-const PLEASANTRIES = /\b(sure|certainly|of course|happy to|i'd recommend|we'd recommend|please note that|please)\b[,.!]?\s*/gi
-
-/** Hedging constructions tightened outside code. */
-const HEDGING: [RegExp, string][] = [
-  [/\bit might be worth\b\s*/gi, ''],
-  [/\byou could consider\b\s*/gi, ''],
-  [/\bit would be good to\b\s*/gi, ''],
-  [/\byou might want to\b\s*/gi, ''],
-  [/\bit seems (like |that )?/gi, ''],
-  [/\b(perhaps|maybe)\b\s*/gi, ''],
-]
-
-/** Redundant phrasing shortened outside code. */
-const REDUNDANT: [RegExp, string][] = [
-  [/\bin order to\b/gi, 'to'],
-  [/\bmake sure to\b/gi, ''],
-  [/\bremember to\b/gi, ''],
-  [/\bthe reason (is|why) because\b/gi, 'because'],
-  [/\bdue to the fact that\b/gi, 'because'],
-  [/\byou should (always )?/gi, ''],
-  [/\b(it is|it's|this is) important (to|because|that)\b/gi, ''],
-  [/\bimplement a solution for\b/gi, 'fix'],
-  [/\butilize\b/gi, 'use'],
-  [/\bextensive\b/gi, 'big'],
-]
+function rewriteReplacer(_match: string, to: string | undefined, because: string | undefined, fix: string | undefined, use: string | undefined, big: string | undefined): string {
+  if (to !== undefined) return 'to'
+  if (because !== undefined) return 'because'
+  if (fix !== undefined) return 'fix'
+  if (use !== undefined) return 'use'
+  if (big !== undefined) return 'big'
+  return ''
+}
 
 /** Connective fluff dropped at sentence starts outside code. */
 const CONNECTIVES = /(^|[.!?]\s+)(however|furthermore|additionally|moreover|in addition|also)\b[,.]?\s*/gi
@@ -120,14 +134,29 @@ export function maskCodeBlocks(text: string): { masked: string; blocks: string[]
  * @returns text with code restored.
  */
 export function restoreCodeBlocks(text: string, blocks: string[]): string {
-  let restored = text
-  blocks.forEach((block, index) => {
-    const marker = `${CODE_MARKER_PREFIX}${index}@@`
-    const count = restored.split(marker).length - 1
-    if (count !== 1) throw new Error(`Preserved code marker ${marker} altered; refusing to write`)
-    restored = restored.replace(marker, block)
+  if (blocks.length === 0) {
+    if (text.includes(CODE_MARKER_PREFIX)) {
+      throw new Error('Unknown Caveman code-preservation marker in output')
+    }
+    return text
+  }
+  // Single pass: one combined pattern replaces every marker via lookup,
+  // instead of two full scans per block. A marker appearing anything but
+  // exactly once fails closed below.
+  const pattern = new RegExp(`${CODE_MARKER_PREFIX}(\\d+)@@`, 'g')
+  const seen = new Array<number>(blocks.length).fill(0)
+  const restored = text.replace(pattern, (marker, index: string) => {
+    const slot = Number(index)
+    if (!Number.isInteger(slot) || slot < 0 || slot >= blocks.length) return marker
+    seen[slot] = (seen[slot] ?? 0) + 1
+    return blocks[slot] ?? marker
   })
-  if (restored.includes(CODE_MARKER_PREFIX)) {
+  for (let index = 0; index < blocks.length; index += 1) {
+    if (seen[index] !== 1) {
+      throw new Error(`Preserved code marker ${CODE_MARKER_PREFIX}${index}@@ altered; refusing to write`)
+    }
+  }
+  if (CODE_MARKER_PREFIX.length > 0 && restored.includes(CODE_MARKER_PREFIX)) {
     throw new Error('Unknown Caveman code-preservation marker in output')
   }
   return restored
@@ -145,13 +174,7 @@ export function compressLine(line: string): string {
     spans.push(span)
     return `@@caveman-inline-${spans.length - 1}@@`
   })
-  let out = masked
-  for (const [pattern, replacement] of [...HEDGING, ...REDUNDANT]) {
-    out = out.replace(pattern, replacement)
-  }
-  out = out.replace(PLEASANTRIES, '')
-  out = out.replace(FILLER, '')
-  out = out.replace(ARTICLES, '')
+  let out = masked.replace(REWRITE, rewriteReplacer as (substring: string, ...args: unknown[]) => string)
   out = out.replace(CONNECTIVES, '$1')
   out = out.replace(TRAILING_CONNECTIVE, '$2')
   out = out.replace(/[ \t]{2,}/g, ' ').trim()

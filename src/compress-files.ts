@@ -11,7 +11,7 @@
  * @module dsh-caveman/compress-files
  */
 
-import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs'
 import { createHash, randomBytes } from 'node:crypto'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -213,7 +213,10 @@ export function withFileLock<T>(filePath: string, run: () => T): T {
       + 'Retry once it finishes.',
     )
   }
-  writeBytesAtomic(marker, Buffer.from(`${process.pid}\n`, 'utf8'))
+  // Plain write, deliberately not atomic+durable: the marker is advisory and
+  // must vanish on crash, so fsync/temp/rename buys nothing. A stale marker
+  // from a killed run fails the next run loudly instead of hanging it.
+  writeFileSync(marker, `${process.pid}\n`, 'utf8')
   try {
     return run()
   } finally {

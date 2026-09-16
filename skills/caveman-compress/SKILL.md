@@ -14,22 +14,19 @@ Compress natural language files (CLAUDE.md, todos, preferences) into caveman-spe
 ## Trigger
 
 `/caveman-compress <filepath>` or when user asks to compress a memory file.
+Disabled by default: enable it in the Caveman settings card first.
 
 ## Process
 
-1. The compression scripts live in `scripts/` (adjacent to this SKILL.md). If the path is not immediately available, search for `scripts/__main__.py` next to this SKILL.md.
+Call the `caveman-compress` tool with `{ "filepath": "<absolute_filepath>" }`.
+It runs the ported pipeline in-process (TypeScript, no python3, no model
+call, no bytes leave the machine):
 
-2. From the directory containing this SKILL.md, run:
-
-python3 -m scripts <absolute_filepath>
-
-3. The CLI will:
-- detect file type (no tokens)
-- call Claude to compress
-- validate output (no tokens)
-- if errors: cherry-pick fix with Claude (targeted fixes only, no recompression)
-- retry up to 2 times
-- if still failing after 2 retries: report error to user, leave original file untouched
+- detect file type (natural language only)
+- rewrite prose with local caveman rules (code, URLs, paths, headings kept)
+- validate output (headings, code, URLs, paths, inline code)
+- back up the original out-of-tree, then overwrite
+- on any failure: report the reason, leave original file untouched
 
 4. Return result to user
 

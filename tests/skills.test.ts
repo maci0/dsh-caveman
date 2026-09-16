@@ -117,12 +117,6 @@ test('bundled resource files travel beside their skills', async () => {
       `cavecrew-${role}.md ships beside the cavecrew skill`,
     )
   }
-  for (const script of ['__main__', 'cli', 'compress', 'detect', 'validate']) {
-    assert.ok(
-      existsSync(join(skillsDir, 'caveman-compress', 'scripts', `${script}.py`)),
-      `${script}.py ships beside the caveman-compress skill`,
-    )
-  }
 })
 
 test('discoverSkills reports and skips an unreadable directory', async () => {

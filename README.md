@@ -105,6 +105,7 @@ After the profile patch save (and a **page refresh** of the Web client the first
 | Field | Default | Meaning |
 |---|---|---|
 | `defaultMode` | row config, then `CAVEMAN_DEFAULT_MODE`, then `~/.config/caveman/config.json`, then `full` | The composition-layer level. The user's settings namespace overrides it. Must be one of the seven levels. |
+| `compressEnabled` | `false` | Master switch for `/caveman-compress`, the `caveman-compress` tool, and the skill. Also togglable in the settings card. |
 
 Invalid configuration fails while the plugin loads rather than silently doing
 the wrong thing.
@@ -117,7 +118,7 @@ the wrong thing.
 | **cavecrew** | delegation | Decision guide + three spawnable prompts (`cavecrew-*.md` beside the skill) for investigator/builder/reviewer via the `subagent` tool. |
 | **caveman-commit** | `/caveman-commit` | Terse Conventional Commit messages. |
 | **caveman-review** | `/caveman-review` | One-line, actionable review findings. |
-| **caveman-compress** | `/caveman-compress <file>` | Smaller Markdown memory files via bundled `scripts/`, original backed up out-of-tree. |
+| **caveman-compress** | `/caveman-compress <file>` | Local-rule compression (no model call), backup kept out-of-tree. Off until enabled in settings. |
 | **caveman-explore** | delegation | Read-only repo explorer returning `path:line` citations. |
 | **caveman-stats** | `/caveman-stats` | Session token usage via `caveman({usage:true})`; savings unknown without a measured comparison. |
 | **caveman-help** | `/caveman-help` | One-screen reminder of every mode and command. |
@@ -130,21 +131,21 @@ drive the caveman engine and proxy (local Go runtime / Cloud gateway) and are
 ## Layout
 
 ```
-src/index.ts        host plugin: section, provider, tool, command, message watcher, settings namespace
+src/index.ts        host plugin: section, provider, tools, commands, message watcher, settings namespace
 src/modes.ts        levels, the mode filter, the injected ruleset, default resolution
 src/skills.ts       skills provider over skills/<name>/SKILL.md
 src/frontmatter.ts  minimal frontmatter reader (plain, `>`, `|`, quoted scalars)
 src/host.ts         structural declaration of the host surface
+src/compress-detect.ts / compress-validate.ts / compress-files.ts / compress-rules.ts / compress-pipeline.ts
+                    local compress pipeline (ported, no model call)
 lib/client.js       browser half: the settings card + the composer chip (loader factory format)
 cordis.patch.yml    the Loader row to paste into the profile's live-watched patch
-skills/             fourteen skills (caveman core + cavecrew + explore verbatim from upstream);
-                    cavecrew ships its three spawnable prompts as cavecrew-*.md beside its SKILL.md;
-                    caveman-compress ships its scripts/ helper (needs python3 + a Claude route:
-                    ANTHROPIC_API_KEY or the `claude` CLI)
+skills/             fourteen skills; cavecrew ships its three spawnable prompts
+                    as cavecrew-*.md beside its SKILL.md
 tests/              node:test unit + fake-host integration coverage
 scripts/sync-upstream.mjs + sync.manifest.json
-                  upstream sync tool: `npm run sync:check` diffs bundled files
-                  against JuliusBrussee/caveman@main
+                    upstream sync tool: `npm run sync:check` diffs bundled files
+                    against JuliusBrussee/caveman@main
 ```
 
 `lib/client.js` is plain JavaScript on purpose. The client module system serves
@@ -172,10 +173,14 @@ npm run sync        # overwrite stale verbatim files (refuses dirty tree w/o --f
 ## Upstream sync
 
 `sync.manifest.json` lists every file copied from
-[JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman): 22
-`verbatim` (byte-identical, safe to overwrite) and 2 `patched` (DSH-adapted,
+[JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman): 13
+`verbatim` (byte-identical, safe to overwrite) and 4 `patched` (DSH-adapted,
 never overwritten):
 
+- `skills/caveman/SKILL.md` — one added line steering concise reasoning
+  (upstream says nothing about thinking tokens);
+- `skills/caveman-compress/SKILL.md` — rewired to the ported TS pipeline
+  (upstream shells to `python3` + a Claude route);
 - `skills/cavecrew/SKILL.md` — added how to spawn via the `subagent` tool
   (DSH has no named-agent registry);
 - `skills/caveman-stats/SKILL.md` — rewired to this plugin's `usage` field
@@ -184,7 +189,7 @@ never overwritten):
 `npm run sync:check` exits 1 listing stale files; `sync` rewrites verbatim
 ones and leaves patched ones for manual re-adaptation. Both accept
 `--ref <tag|sha>` to pin (default: `main`). `tests/sync.test.ts` asserts the
-steady state — 22 clean, 2 patched-stale — so new upstream drift fails loudly.
+steady state — 13 clean, 4 patched-stale — so new upstream drift fails loudly.
 
 ## Uninstall
 
@@ -222,10 +227,11 @@ and delete the `id: caveman` row from
 MIT. Skill content: © JuliusBrussee
 ([caveman](https://github.com/JuliusBrussee/caveman)). DSH port: see `LICENSE`.
 
-The fourteen `skills/*/SKILL.md` files are verbatim copies, except
-`caveman-stats` (rewired to this plugin's `usage` field) and two added
-paragraphs in `cavecrew` (how to spawn via the `subagent` tool). The
-`cavecrew-*.md` prompts and `caveman-compress/scripts/` are verbatim too.
+The fourteen `skills/*/SKILL.md` files track upstream; ten are verbatim
+copies, four carry small DSH adaptations (see Upstream sync). The
+`cavecrew-*.md` prompts are verbatim too. The compress pipeline
+(`src/compress-*.ts`) is a port, not a copy: same behavior, local rules
+instead of a model call, no python3 needed.
 Upstream's numbers (JetBrains: 8.5% fewer output tokens, skill only; Adobe
 CAVEWOMAN: 1.4–2.4× output-side cost cut; proxy benchmark: −33.2% input
 tokens) are upstream's, not this package's — this port ships the skill half

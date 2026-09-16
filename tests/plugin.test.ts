@@ -117,8 +117,15 @@ async function callTool(host: { captured: Captured }, args: unknown, exec?: Tool
   return tool.execute(args, exec)
 }
 
-async function callCommand(host: { captured: Captured }, rawInput: string) {
-  const command = host.captured.commands[0]
+async function callCompressTool(host: { captured: Captured }, args: unknown): Promise<unknown> {
+  const tool = host.captured.tools[1]
+  assert.ok(tool)
+  assert.equal(tool.name, 'caveman-compress')
+  return tool.execute(args)
+}
+
+async function callCommand(host: { captured: Captured }, rawInput: string, index = 0) {
+  const command = host.captured.commands[index]
   assert.ok(command)
   return command.handler({ rawInput })
 }
@@ -130,14 +137,17 @@ test('apply mounts the section, provider, tool, command, and settings namespace'
   assert.equal(host.captured.sections[0]?.name, 'caveman')
   assert.equal(host.captured.sections[0]?.order, 700)
   assert.equal(host.captured.tools[0]?.name, 'caveman')
+  assert.equal(host.captured.tools[1]?.name, 'caveman-compress')
   assert.equal(host.captured.commands[0]?.name, 'caveman')
+  assert.equal(host.captured.commands[1]?.name, 'caveman-compress')
   assert.equal(host.captured.providers.length, 1)
-  assert.equal((await host.captured.providers[0]?.list())?.length, 14)
+  // compress ships disabled: its skill stays out of the catalog until enabled.
+  assert.equal((await host.captured.providers[0]?.list())?.length, 13)
 
   const install = host.captured.installs[0]
   assert.ok(install)
   assert.equal(install.namespace, CAVEMAN_SETTINGS_NAMESPACE)
-  assert.deepEqual(install.entry, { mode: 'full' })
+  assert.deepEqual(install.entry, { mode: 'full', compressEnabled: false, compressBackupDir: '' })
   // The settings service serializes `schema.toJSON()` for the browser half, so
   // the namespace must carry a real schemastery schema.
   assert.equal(typeof (install.schema as { toJSON?: unknown }).toJSON, 'function')
@@ -437,4 +447,61 @@ test('an already-off level is not written again', async () => {
   await settle()
 
   assert.deepEqual(host.captured.updates, [])
+})
+
+test('compress stays dark until enabled, then gates skill, tool, and command', async () => {
+  const { mkdtemp, rm, writeFile, readFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+
+  const host = createHost()
+  apply(host.ctx, { defaultMode: 'full' })
+
+  // Disabled: skill hidden, tool and command refuse.
+  const names = (await host.captured.providers[0]?.list())?.map((skill) => skill.name) ?? []
+  assert.ok(!names.includes('caveman-compress'))
+  assert.deepEqual(await callCompressTool(host, { filepath: '/tmp/x.md' }), {
+    ok: false, reason: 'caveman-compress is disabled. Enable it in the Caveman settings card first.',
+  })
+  assert.deepEqual(await callCommand(host, '/tmp/x.md', 1), {
+    kind: 'error', text: 'caveman-compress is disabled. Enable it in the Caveman settings card first.',
+  })
+  assert.deepEqual(await callCommand(host, '', 1), {
+    kind: 'error', text: 'caveman-compress is disabled. Enable it in the Caveman settings card first.',
+  })
+
+  // Enable through the settings layer: skill appears, pipeline runs.
+  host.captured.installs[0]?.hooks.setSource(() => ({ mode: 'full', compressEnabled: true, compressBackupDir: '' }))
+  host.captured.installs[0]?.hooks.onChange()
+  const enabled = (await host.captured.providers[0]?.list())?.map((skill) => skill.name) ?? []
+  assert.ok(enabled.includes('caveman-compress'))
+
+  const root = await mkdtemp(join(tmpdir(), 'caveman-compress-test-'))
+  try {
+    const target = join(root, 'notes.md')
+    await writeFile(target, '# Notes\n\nYou should always make sure to run the tests before you push anything.\n')
+    const outcome = await callCompressTool(host, { filepath: target }) as Record<string, unknown>
+    assert.equal(outcome['ok'], true)
+    assert.match(String(await readFile(target, 'utf8')), /run tests before/)
+    assert.deepEqual(await callCommand(host, target, 1), {
+      kind: 'error',
+      text: `Backup already exists: ${outcome['backupPath']}. Remove or rename it to proceed.`,
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+
+  await assert.rejects(() => callCompressTool(host, {}), /needs a filepath string/)
+})
+
+test('row config enables compress at startup', () => {
+  const host = createHost()
+  apply(host.ctx, { defaultMode: 'full', compressEnabled: true })
+  assert.deepEqual(host.captured.installs[0]?.entry, {
+    mode: 'full', compressEnabled: true, compressBackupDir: '',
+  })
+  assert.throws(
+    () => apply(createHost().ctx, { compressEnabled: 'yes' as unknown as boolean }),
+    /compressEnabled must be a boolean/,
+  )
 })

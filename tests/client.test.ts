@@ -206,12 +206,33 @@ test('expanding reveals one radio per persisted level and writes the chosen one'
 
   assert.equal(buttons(open)[0]?.props['aria-expanded'], true)
   assert.equal(buttons(open)[0]?.props['aria-label'], 'Collapse: Caveman')
-  const levels = radios(open)
+  const levels = radios(open).slice(0, 7)
   assert.deepEqual(levels.map((radio) => radio.children[0]), ['Off', 'Lite', 'Full', 'Ultra', 'Wenyan-Lite', 'Wenyan-Full', 'Wenyan-Ultra'])
   assert.deepEqual(levels.map((radio) => radio.props['aria-checked']), [false, false, true, false, false, false, false])
 
   ;(levels[6]?.props['onClick'] as () => void)()
   assert.deepEqual(calls.set, [['mode', 'wenyan-ultra']])
+})
+
+test('the compress toggle writes its own field and leaves the level alone', () => {
+  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
+  const { registered, react } = loadBundle(
+    { status: 'ready', value: { mode: 'full', compressEnabled: false }, user: {}, writable: true },
+    calls,
+  )
+
+  const component = componentFor(registered, 'settings.plugin.item')
+  const open = expand(react, component)
+
+  const toggle = radios(open).find((radio) => radio.children[0] === 'Enable /caveman-compress')
+  assert.ok(toggle, 'the compress toggle renders')
+  assert.equal(toggle.props['aria-checked'], false)
+  ;(toggle.props['onClick'] as () => void)()
+  assert.deepEqual(calls.set, [['compressEnabled', true]])
+
+  const inputs = open.filter((element) => element.type === 'input')
+  assert.equal(inputs.length, 1)
+  assert.equal(inputs[0]?.props['placeholder'], 'Backup dir (empty = default)')
 })
 
 test('an overridden level is called out and offers a reset', () => {
@@ -243,7 +264,7 @@ test('the card disables its controls when the host document is not writable', ()
   const component = componentFor(registered, 'settings.plugin.item')
   const open = expand(react, component)
 
-  const levels = radios(open)
+  const levels = radios(open).slice(0, 7)
   assert.equal(levels.length, 7)
   for (const level of levels) assert.equal(level.props['disabled'], true)
 })
@@ -280,7 +301,7 @@ test('the chrome is class-based, so no state change goes through React style dif
 
   assert.match(String(open.filter((element) => element.type === 'li')[0]?.props['className']), /dc-card-open/)
 
-  const pills = radios(open)
+  const pills = radios(open).slice(0, 7)
   assert.equal(pills.length, 7)
   const selected = pills.filter((pill) => pill.props['aria-checked'] === true)
   assert.equal(selected.length, 1)

@@ -40,6 +40,8 @@ import {
   type CavemanMode,
 } from './modes.ts'
 import { createSkillProvider } from './skills.ts'
+import { compressFile } from './compress-pipeline.ts'
+import { setBackupRootOverride } from './compress-files.ts'
 import { parseFrontmatter } from './frontmatter.ts'
 import type {
   CommandInvocationLike,
@@ -66,6 +68,8 @@ export const CAVEMAN_SETTINGS_NAMESPACE = 'caveman'
 /** Persisted configuration. Every caveman level persists; there is no session-only level. */
 export const CavemanSettings = z.object({
   mode: z.union([...RUNTIME_MODES]).default(DEFAULT_MODE),
+  compressEnabled: z.boolean().default(false),
+  compressBackupDir: z.string().default(''),
 })
 
 /**
@@ -80,6 +84,8 @@ export const CavemanSettings = z.object({
 export interface Config {
   /** Startup level. Defaults to `CAVEMAN_DEFAULT_MODE`, then `full`. */
   readonly defaultMode?: string
+  /** Master switch for `/caveman-compress` and the `caveman-compress` tool. Defaults to false. */
+  readonly compressEnabled?: boolean
 }
 
 /** Default system-prompt position: after the persona prefix, before tool guidance. */
@@ -130,9 +136,15 @@ export function apply(ctx: HostContext, config: Config = {}): void {
       `[caveman] defaultMode must be one of ${RUNTIME_MODES.join(', ')}; got ${JSON.stringify(config.defaultMode)}`,
     )
   }
+  if (config.compressEnabled !== undefined && typeof config.compressEnabled !== 'boolean') {
+    throw new Error(
+      `[caveman] compressEnabled must be a boolean; got ${JSON.stringify(config.compressEnabled)}`,
+    )
+  }
 
   // `<package>/skills`, resolved from this module's own location.
   const skillsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills')
+  const compressStartup = config.compressEnabled ?? false
   const startup = resolveDefaultMode({
     configured: config.defaultMode,
     configFile: readUpstreamConfigFile(),
@@ -157,6 +169,25 @@ export function apply(ctx: HostContext, config: Config = {}): void {
     const value = source()
     if (value === null || typeof value !== 'object') return undefined
     return normalizeMode((value as { mode?: unknown }).mode)
+  }
+
+  /** Whether the local compress feature is enabled (settings layer, else row). */
+  const compressEnabled = (): boolean => {
+    const value = source()
+    if (value !== null && typeof value === 'object') {
+      const flag = (value as { compressEnabled?: unknown }).compressEnabled
+      if (typeof flag === 'boolean') return flag
+    }
+    return compressStartup
+  }
+
+  /** Sync the backup-dir override from settings before each compress run. */
+  const syncBackupDir = (): void => {
+    const value = source()
+    const dir = value !== null && typeof value === 'object'
+      ? (value as { compressBackupDir?: unknown }).compressBackupDir
+      : undefined
+    setBackupRootOverride(typeof dir === 'string' ? dir : '')
   }
 
   const activeMode = (): CavemanMode => override ?? configuredMode() ?? startup
@@ -207,7 +238,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
       ctx,
       CAVEMAN_SETTINGS_NAMESPACE,
       CavemanSettings,
-      { mode: startup },
+      { mode: startup, compressEnabled: compressStartup, compressBackupDir: '' },
       {
         setSource: (current) => {
           source = current
@@ -234,12 +265,17 @@ export function apply(ctx: HostContext, config: Config = {}): void {
 
   ctx.inject(['skills'], (scope) => {
     scope.skills.registerProvider(() =>
-      createSkillProvider({ skillsDir, onWarn: warn }),
+      createSkillProvider({
+        skillsDir,
+        onWarn: warn,
+        exclude: () => (compressEnabled() ? [] : ['caveman-compress']),
+      }),
     )
   })
 
   ctx.inject(['tools'], (scope) => {
     scope.tools.register(createModeTool(activeMode, setMode, (exec) => readSessionUsage(scope, exec)))
+    scope.tools.register(createCompressTool(compressEnabled, syncBackupDir))
   })
 
   ctx.inject(['commands'], (scope) => {
@@ -248,6 +284,12 @@ export function apply(ctx: HostContext, config: Config = {}): void {
       description: '🪨 Set the caveman level (lite, full, ultra, wenyan-*, off) or report the current one.',
       input: { hint: 'lite | full | ultra | wenyan-lite | wenyan-full | wenyan-ultra | off' },
       handler: async (invocation) => handleModeCommand(invocation, activeMode, setMode),
+    })
+    scope.commands.register({
+      name: 'caveman-compress',
+      description: '🗜 Compress a memory file with local rules (backup kept). Disabled until enabled in settings.',
+      input: { hint: '<filepath>' },
+      handler: async (invocation) => handleCompressCommand(invocation, compressEnabled, syncBackupDir),
     })
   })
 
@@ -440,6 +482,79 @@ function usageField(
 }
 
 /**
+ * Build the model-facing compress tool. Local deterministic rules only —
+ * no model call, no bytes leave the machine. Refuses when disabled.
+ * @param isEnabled - reads the compress master switch.
+ * @returns the raw tool definition.
+ */
+function createCompressTool(isEnabled: () => boolean, syncBackupDir: () => void): ToolDefinitionLike {
+  return {
+    name: 'caveman-compress',
+    description:
+      'Compress a natural-language file (memory file, todo list) with local '
+      + 'caveman rules. Code, URLs, paths, and headings are preserved; the '
+      + 'original is backed up out-of-tree. Disabled until compressEnabled is on.',
+    parameters: {
+      type: 'object',
+      properties: {
+        filepath: {
+          type: 'string',
+          description: 'Absolute path of the file to compress.',
+        },
+      },
+      required: ['filepath'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          ok: { type: 'boolean' },
+          reason: { type: 'string' },
+          backupPath: { type: 'string' },
+          originalChars: { type: 'number' },
+          compressedChars: { type: 'number' },
+        },
+        required: ['ok'],
+        additionalProperties: false,
+      },
+      render: (_args, value) => [{ type: 'text', text: renderCompressResult(value) }],
+    },
+    async execute(args) {
+      if (!isEnabled()) {
+        return { ok: false, reason: 'caveman-compress is disabled. Enable it in the Caveman settings card first.' }
+      }
+      if (args === null || typeof args !== 'object') {
+        throw new Error('caveman-compress needs a filepath string.')
+      }
+      const filepath = (args as Record<string, unknown>)['filepath']
+      if (typeof filepath !== 'string' || filepath.trim() === '') {
+        throw new Error('caveman-compress needs a filepath string.')
+      }
+      syncBackupDir()
+      return compressFile(filepath)
+    },
+  }
+}
+
+/**
+ * Render the canonical compress value for the model.
+ * @param value - the canonical value returned by `execute`.
+ * @returns model-facing prose.
+ */
+function renderCompressResult(value: unknown): string {
+  const record = (value ?? {}) as Record<string, unknown>
+  if (record['ok'] !== true) {
+    const reason = typeof record['reason'] === 'string' ? record['reason'] : 'compression failed'
+    return reason
+  }
+  const backup = typeof record['backupPath'] === 'string' ? record['backupPath'] : 'unknown'
+  const before = typeof record['originalChars'] === 'number' ? record['originalChars'] : 0
+  const after = typeof record['compressedChars'] === 'number' ? record['compressedChars'] : 0
+  return `Compressed ${before} to ${after} chars. Original backed up at ${backup}.`
+}
+
+/**
  * Read the optional `mode` argument, validating it because raw definitions own
  * their input validation.
  * @param args - losslessly snapshotted model arguments.
@@ -551,4 +666,34 @@ async function handleModeCommand(
 
   const { previous, mode, changed } = await setMode(requested)
   return { kind: 'success', text: modeSentence(mode, previous, changed) }
+}
+
+/**
+ * Handle the human `/caveman-compress <filepath>` command.
+ * @param invocation - the command invocation.
+ * @param isEnabled - reads the compress master switch.
+ * @returns the direct-UI result.
+ */
+async function handleCompressCommand(
+  invocation: CommandInvocationLike,
+  isEnabled: () => boolean,
+  syncBackupDir: () => void,
+): Promise<CommandResultLike> {
+  if (!isEnabled()) {
+    return {
+      kind: 'error',
+      text: 'caveman-compress is disabled. Enable it in the Caveman settings card first.',
+    }
+  }
+  const filepath = invocation.rawInput.trim()
+  if (filepath === '') {
+    return { kind: 'error', text: 'Usage: /caveman-compress <filepath>' }
+  }
+  syncBackupDir()
+  const outcome = compressFile(filepath)
+  if (!outcome.ok) return { kind: 'error', text: outcome.reason }
+  return {
+    kind: 'success',
+    text: `Compressed ${outcome.originalChars} to ${outcome.compressedChars} chars. Original backed up at ${outcome.backupPath}.`,
+  }
 }

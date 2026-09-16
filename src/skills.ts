@@ -53,6 +53,8 @@ export interface SkillProviderOptions {
   readonly skillsDir: string
   /** Receives non-fatal discovery problems instead of throwing. */
   readonly onWarn?: (message: string) => void
+  /** Skill names to hide from the catalog, evaluated at each lookup. */
+  readonly exclude?: () => readonly string[]
 }
 
 /**
@@ -149,7 +151,9 @@ export function createSkillProvider(options: SkillProviderOptions): SkillProvide
     name: PROVIDER_NAME,
 
     async list(): Promise<readonly SkillCandidateLike[]> {
-      const skills = await discoverSkills(options.skillsDir, options.onWarn)
+      const excluded = new Set(options.exclude?.() ?? [])
+      const skills = (await discoverSkills(options.skillsDir, options.onWarn))
+        .filter((skill) => !excluded.has(skill.name))
       return skills.map((skill) => ({
         ...summaryOf(skill),
         rank: BUNDLED_SKILL_RANK,
@@ -160,6 +164,7 @@ export function createSkillProvider(options: SkillProviderOptions): SkillProvide
 
     async get(candidate: SkillCandidateLike): Promise<SkillDefinitionLike | undefined> {
       if (typeof candidate.locator !== 'string') return undefined
+      if (options.exclude?.().includes(candidate.name) === true) return undefined
 
       const skills = await discoverSkills(options.skillsDir, options.onWarn)
       const found = skills.find(

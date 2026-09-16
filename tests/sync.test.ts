@@ -44,21 +44,27 @@ test('patched files document their divergence', () => {
   const manifest = loadManifest()
   assert.deepEqual([...manifest.patched].sort(), [
     'skills/cavecrew/SKILL.md',
+    'skills/caveman-compress/SKILL.md',
     'skills/caveman-stats/SKILL.md',
+    'skills/caveman/SKILL.md',
   ])
   for (const file of manifest.patched) {
     const body = readFileSync(join(packageRoot, file), 'utf8')
     assert.ok(body.length > 0, `${file} is non-empty`)
   }
+  const core = readFileSync(join(packageRoot, 'skills/caveman/SKILL.md'), 'utf8')
+  assert.match(core, /Reason concisely/, 'caveman states its thinking-line adaptation')
+  const compress = readFileSync(join(packageRoot, 'skills/caveman-compress/SKILL.md'), 'utf8')
+  assert.match(compress, /caveman-compress.*tool/, 'compress states its TS-pipeline adaptation')
   const cavecrew = readFileSync(join(packageRoot, 'skills/cavecrew/SKILL.md'), 'utf8')
   assert.match(cavecrew, /no named-agent registry/, 'cavecrew states its DSH adaptation')
   const stats = readFileSync(join(packageRoot, 'skills/caveman-stats/SKILL.md'), 'utf8')
   assert.match(stats, /tokenUsage/, 'stats states its DSH adaptation')
 })
 
-test('sync check reports the two known patched drifts and nothing else', () => {
+test('sync check reports the four known patched drifts and nothing else', () => {
   // Network-dependent: upstream main must be reachable. Asserts the exact
-  // steady state — 22 verbatim clean, 2 patched stale — so a newly drifted
+  // steady state — 13 verbatim clean, 4 patched stale — so a newly drifted
   // verbatim file fails loudly instead of rotting.
   let out: string
   try {
@@ -69,6 +75,8 @@ test('sync check reports the two known patched drifts and nothing else', () => {
     assert.equal(result.status, 1)
     out = (result.stdout ?? Buffer.of()).toString()
   }
+  assert.match(out, /stale \[patched\]: skills\/caveman\/SKILL\.md/)
+  assert.match(out, /stale \[patched\]: skills\/caveman-compress\/SKILL\.md/)
   assert.match(out, /stale \[patched\]: skills\/cavecrew\/SKILL\.md/)
   assert.match(out, /stale \[patched\]: skills\/caveman-stats\/SKILL\.md/)
   assert.doesNotMatch(out, /\[verbatim\]/, 'no verbatim file drifted')

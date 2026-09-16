@@ -16,7 +16,7 @@ const HEADING_REGEX = /^(#{1,6})\s+(.*)/gm
 const BULLET_REGEX = /^\s*[-*+]\s+/gm
 const LIST_ITEM_REGEX = /^\s*(?:[-*+]|\d+[.)])\s/
 const PATH_REGEX = /(?:\.\/|\.\.\/|\/|[A-Za-z]:\\)[\w\-\/\\.]+|[\w\-\.]+[\/\\][\w\-\/\\.]+/g
-const DEFINITE_PATH_REGEX = /^(?:\.\/|\.\.\/|\/|\|[A-Za-z]:\\)|[^\/\\]*\.[A-Za-z0-9]{1,8}$/
+const DEFINITE_PATH_REGEX = /^(?:\.\/|\.\.\/|\/|[A-Za-z]:\\)|[^\/\\]*\.[A-Za-z0-9]{1,8}$/
 
 /** Outcome of validating one original/compressed pair. */
 export interface ValidationResult {

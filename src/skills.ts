@@ -53,8 +53,6 @@ export interface SkillProviderOptions {
   readonly skillsDir: string
   /** Receives non-fatal discovery problems instead of throwing. */
   readonly onWarn?: (message: string) => void
-  /** Skill names to hide from the catalog, evaluated at each lookup. */
-  readonly exclude?: () => readonly string[]
 }
 
 /**
@@ -169,9 +167,7 @@ export function createSkillProvider(options: SkillProviderOptions): SkillProvide
     name: PROVIDER_NAME,
 
     async list(): Promise<readonly SkillCandidateLike[]> {
-      const excluded = new Set(options.exclude?.() ?? [])
-      const skills = (await discoverSkills(options.skillsDir, options.onWarn))
-        .filter((skill) => !excluded.has(skill.name))
+      const skills = await discoverSkills(options.skillsDir, options.onWarn)
       return skills.map((skill) => ({
         ...summaryOf(skill),
         rank: BUNDLED_SKILL_RANK,
@@ -182,7 +178,6 @@ export function createSkillProvider(options: SkillProviderOptions): SkillProvide
 
     async get(candidate: SkillCandidateLike): Promise<SkillDefinitionLike | undefined> {
       if (typeof candidate.locator !== 'string') return undefined
-      if (options.exclude?.().includes(candidate.name) === true) return undefined
 
       // Read the locator directly: one file instead of a full re-discovery.
       // The name check keeps a stale candidate (path reused by another skill)

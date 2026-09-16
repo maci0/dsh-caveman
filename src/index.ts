@@ -32,7 +32,6 @@ import {
   DEFAULT_MODE,
   isDeactivationCommand,
   normalizeCommandMode,
-  normalizeConfigMode,
   normalizeMode,
   resolveDefaultMode,
   RUNTIME_MODES,
@@ -540,7 +539,7 @@ function readModeArgument(args: unknown): CavemanMode | undefined {
   const raw = (args as Record<string, unknown>)['mode']
   if (raw === undefined || raw === null || raw === '') return undefined
 
-  const mode = normalizeConfigMode(raw)
+  const mode = normalizeMode(raw)
   if (mode === undefined) {
     throw new Error(
       `Unknown caveman level ${JSON.stringify(raw)}. Use one of: ${VALID_MODES.join(', ')}.`,
@@ -562,7 +561,7 @@ function readOnceArgument(args: unknown): CavemanMode | undefined {
   const raw = (args as Record<string, unknown>)['once']
   if (raw === undefined || raw === null || raw === '') return undefined
 
-  const once = normalizeConfigMode(raw)
+  const once = normalizeMode(raw)
   if (once === undefined) {
     throw new Error(
       `Unknown caveman level ${JSON.stringify(raw)}. Use one of: ${VALID_MODES.filter((mode) => mode !== 'off').join(', ')}.`,

@@ -13,7 +13,7 @@
 
 import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs'
 import { createHash, randomBytes } from 'node:crypto'
-import { homedir, tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
 /** Refuse anything over this size before touching it. */
@@ -226,9 +226,4 @@ export function withFileLock<T>(filePath: string, run: () => T): T {
       // Ignore cleanup failure; the lock is advisory.
     }
   }
-}
-
-/** Remove temp files. Exported for tests. */
-export function tmpFile(): string {
-  return join(tmpdir(), `caveman-compress-${randomBytes(8).toString('hex')}.tmp`)
 }

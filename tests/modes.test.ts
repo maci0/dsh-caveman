@@ -5,7 +5,6 @@ import {
   filterSkillBodyForMode,
   isDeactivationCommand,
   normalizeCommandMode,
-  normalizeConfigMode,
   normalizeMode,
   resolveDefaultMode,
 } from '../src/modes.ts'
@@ -19,12 +18,6 @@ test('normalizeMode accepts all seven persistable levels', () => {
   assert.equal(normalizeMode('review'), undefined)
   assert.equal(normalizeMode(''), undefined)
   assert.equal(normalizeMode(42), undefined)
-})
-
-test('normalizeConfigMode matches normalizeMode: every level persists', () => {
-  assert.equal(normalizeConfigMode('Full'), 'full')
-  assert.equal(normalizeConfigMode('wenyan-full'), 'wenyan-full')
-  assert.equal(normalizeConfigMode('shrug'), undefined)
 })
 
 test('normalizeCommandMode adds the bare wenyan shorthand', () => {

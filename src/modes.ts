@@ -46,20 +46,6 @@ export function normalizeMode(value: unknown): RuntimeMode | undefined {
 }
 
 /**
- * Normalize a value to any accepted level.
- *
- * Kept as a separate function so the model-facing tool and the human command
- * share one vocabulary; every caveman level persists, so this accepts exactly
- * what {@link normalizeMode} accepts. The bare `wenyan` shorthand is a
- * command-layer concern and lives in `index.ts`, not here.
- * @param value - candidate level.
- * @returns the canonical level, or `undefined` when unrecognized.
- */
-export function normalizeConfigMode(value: unknown): CavemanMode | undefined {
-  return normalizeMode(value)
-}
-
-/**
  * Whether a whole message is a deactivation command.
  *
  * "stop caveman" / "normal mode" turn caveman off, but only as a standalone
@@ -82,7 +68,7 @@ export function isDeactivationCommand(text: string): boolean {
  */
 export function normalizeCommandMode(input: string): CavemanMode | undefined {
   if (input === 'wenyan') return 'wenyan-full'
-  return normalizeConfigMode(input)
+  return normalizeMode(input)
 }
 
 /** Inputs for {@link resolveDefaultMode}, all injectable for tests. */
@@ -180,8 +166,7 @@ export function buildModeInstructions(input: InstructionInput): string {
   const cached = instructionCache.get(effective)
   if (cached !== undefined) return cached
 
-  const built = 'CAVEMAN MODE ACTIVE — level: ' + effective + '\n\n' +
-    filterSkillBodyForMode(input.skillBody, effective)
+  const built = `CAVEMAN MODE ACTIVE — level: ${effective}\n\n${filterSkillBodyForMode(input.skillBody, effective)}`
   instructionCache.set(effective, built)
   return built
 }

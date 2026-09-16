@@ -142,6 +142,9 @@ skills/             fourteen skills (caveman core + cavecrew + explore verbatim 
                     caveman-compress ships its scripts/ helper (needs python3 + a Claude route:
                     ANTHROPIC_API_KEY or the `claude` CLI)
 tests/              node:test unit + fake-host integration coverage
+scripts/sync-upstream.mjs + sync.manifest.json
+                  upstream sync tool: `npm run sync:check` diffs bundled files
+                  against JuliusBrussee/caveman@main
 ```
 
 `lib/client.js` is plain JavaScript on purpose. The client module system serves
@@ -162,7 +165,26 @@ and that is what silently blanked a deselected pill's border upstream.
 npm install         # real install (npm needed --legacy-peer-deps at build time: registry RC drift)
 npm test            # node --test tests/*.test.ts (Node >= 22.6, no build step)
 npm run typecheck   # tsc --noEmit
+npm run sync:check  # diff bundled files against upstream main (needs network)
+npm run sync        # overwrite stale verbatim files (refuses dirty tree w/o --force)
 ```
+
+## Upstream sync
+
+`sync.manifest.json` lists every file copied from
+[JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman): 22
+`verbatim` (byte-identical, safe to overwrite) and 2 `patched` (DSH-adapted,
+never overwritten):
+
+- `skills/cavecrew/SKILL.md` — added how to spawn via the `subagent` tool
+  (DSH has no named-agent registry);
+- `skills/caveman-stats/SKILL.md` — rewired to this plugin's `usage` field
+  (upstream reads Claude Code hook files).
+
+`npm run sync:check` exits 1 listing stale files; `sync` rewrites verbatim
+ones and leaves patched ones for manual re-adaptation. Both accept
+`--ref <tag|sha>` to pin (default: `main`). `tests/sync.test.ts` asserts the
+steady state — 22 clean, 2 patched-stale — so new upstream drift fails loudly.
 
 ## Uninstall
 

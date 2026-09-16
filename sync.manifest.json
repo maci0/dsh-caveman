@@ -1,0 +1,32 @@
+{
+  "upstream": "https://github.com/JuliusBrussee/caveman",
+  "ref": "main",
+  "verbatim": [
+    "skills/caveman/SKILL.md",
+    "skills/caveman-commit/SKILL.md",
+    "skills/caveman-review/SKILL.md",
+    "skills/caveman-compress/SKILL.md",
+    "skills/caveman-compress/scripts/__init__.py",
+    "skills/caveman-compress/scripts/__main__.py",
+    "skills/caveman-compress/scripts/benchmark.py",
+    "skills/caveman-compress/scripts/cli.py",
+    "skills/caveman-compress/scripts/compress.py",
+    "skills/caveman-compress/scripts/detect.py",
+    "skills/caveman-compress/scripts/validate.py",
+    "skills/caveman-help/SKILL.md",
+    "skills/cavecrew/cavecrew-investigator.md",
+    "skills/cavecrew/cavecrew-builder.md",
+    "skills/cavecrew/cavecrew-reviewer.md",
+    "skills/investigate-first/SKILL.md",
+    "skills/lean-build/SKILL.md",
+    "skills/surgical-patch/SKILL.md",
+    "skills/safe-refactor/SKILL.md",
+    "skills/migration/SKILL.md",
+    "skills/verify-and-stop/SKILL.md",
+    "skills/caveman-explore/SKILL.md"
+  ],
+  "patched": [
+    "skills/cavecrew/SKILL.md",
+    "skills/caveman-stats/SKILL.md"
+  ]
+}

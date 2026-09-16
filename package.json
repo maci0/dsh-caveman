@@ -26,13 +26,17 @@
     "src",
     "lib",
     "skills",
+    "scripts/sync-upstream.mjs",
+    "sync.manifest.json",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "test": "node --test tests/*.test.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "sync:check": "node scripts/sync-upstream.mjs check",
+    "sync": "node scripts/sync-upstream.mjs sync"
   },
   "engines": {
     "node": ">=22.6.0"

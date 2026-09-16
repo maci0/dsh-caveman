@@ -214,25 +214,29 @@ test('expanding reveals one radio per persisted level and writes the chosen one'
   assert.deepEqual(calls.set, [['mode', 'wenyan-ultra']])
 })
 
-test('the compress toggle writes its own field and leaves the level alone', () => {
+test('the backup-dir input writes its own field and leaves the level alone', () => {
   const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
   const { registered, react } = loadBundle(
-    { status: 'ready', value: { mode: 'full', compressEnabled: false }, user: {}, writable: true },
+    { status: 'ready', value: { mode: 'full', compressBackupDir: '' }, user: {}, writable: true },
     calls,
   )
 
   const component = componentFor(registered, 'settings.plugin.item')
   const open = expand(react, component)
 
-  const toggle = radios(open).find((radio) => radio.children[0] === 'Enable /caveman-compress')
-  assert.ok(toggle, 'the compress toggle renders')
-  assert.equal(toggle.props['aria-checked'], false)
-  ;(toggle.props['onClick'] as () => void)()
-  assert.deepEqual(calls.set, [['compressEnabled', true]])
+  const levels = radios(open).slice(0, 7)
+  assert.deepEqual(levels.map((radio) => radio.children[0]), ['Off', 'Lite', 'Full', 'Ultra', 'Wenyan-Lite', 'Wenyan-Full', 'Wenyan-Ultra'])
 
   const inputs = open.filter((element) => element.type === 'input')
   assert.equal(inputs.length, 1)
   assert.equal(inputs[0]?.props['placeholder'], 'Backup dir (empty = default)')
+  ;(inputs[0]?.props['onChange'] as (event: unknown) => void)({ target: { value: 'vault' } })
+  react.reset()
+  const input = walk(component()).filter((element) => element.type === 'input')[0]
+  assert.ok(input)
+  assert.equal(input.props['value'], 'vault')
+  ;(input.props['onBlur'] as () => void)()
+  assert.deepEqual(calls.set, [['compressBackupDir', 'vault']])
 })
 
 test('an overridden level is called out and offers a reset', () => {

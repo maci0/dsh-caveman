@@ -14,7 +14,6 @@ Compress natural language files (CLAUDE.md, todos, preferences) into caveman-spe
 ## Trigger
 
 `/caveman-compress <filepath>` or when user asks to compress a memory file.
-Disabled by default: enable it in the Caveman settings card first.
 
 ## Process
 

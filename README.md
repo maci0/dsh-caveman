@@ -105,7 +105,9 @@ After the profile patch save (and a **page refresh** of the Web client the first
 | Field | Default | Meaning |
 |---|---|---|
 | `defaultMode` | row config, then `CAVEMAN_DEFAULT_MODE`, then `~/.config/caveman/config.json`, then `full` | The composition-layer level. The user's settings namespace overrides it. Must be one of the seven levels. |
-| `compressEnabled` | `false` | Master switch for `/caveman-compress`, the `caveman-compress` tool, and the skill. Also togglable in the settings card. |
+
+The card also carries a backup-dir input for `/caveman-compress`
+(`compressBackupDir`, empty = platform default).
 
 Invalid configuration fails while the plugin loads rather than silently doing
 the wrong thing.
@@ -118,7 +120,7 @@ the wrong thing.
 | **cavecrew** | delegation | Decision guide + three spawnable prompts (`cavecrew-*.md` beside the skill) for investigator/builder/reviewer via the `subagent` tool. |
 | **caveman-commit** | `/caveman-commit` | Terse Conventional Commit messages. |
 | **caveman-review** | `/caveman-review` | One-line, actionable review findings. |
-| **caveman-compress** | `/caveman-compress <file>` | Local-rule compression (no model call), backup kept out-of-tree. Off until enabled in settings. |
+| **caveman-compress** | `/caveman-compress <file>` | Local-rule compression (no model call), backup kept out-of-tree. |
 | **caveman-explore** | delegation | Read-only repo explorer returning `path:line` citations. |
 | **caveman-stats** | `/caveman-stats` | Session token usage via `caveman({usage:true})`; savings unknown without a measured comparison. |
 | **caveman-help** | `/caveman-help` | One-screen reminder of every mode and command. |

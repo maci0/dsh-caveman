@@ -153,4 +153,7 @@ test('the provider lists candidates and loads their bodies', async () => {
 
   const missing = await provider.get({ ...review, locator: join(skillsDir, 'nope', 'SKILL.md') })
   assert.equal(missing, undefined)
+
+  const stale = await provider.get({ ...review, name: 'other-skill' })
+  assert.equal(stale, undefined)
 })

@@ -25,21 +25,18 @@ export const RUNTIME_MODES = [
 /** Every accepted level. All caveman levels persist, so this equals {@link RUNTIME_MODES}. */
 export const VALID_MODES = RUNTIME_MODES
 
-/** A level that selects the always-on ruleset, or turns it off. */
-export type RuntimeMode = (typeof RUNTIME_MODES)[number]
-
 /** Any level the plugin accepts. */
 export type CavemanMode = (typeof VALID_MODES)[number]
 
 /** Level used when neither config nor environment sets one. */
-export const DEFAULT_MODE: RuntimeMode = 'full'
+export const DEFAULT_MODE: CavemanMode = 'full'
 
 /**
  * Normalize a value to a level that may be persisted as a default.
  * @param value - candidate level from a config field, environment, or command.
  * @returns the canonical runtime level, or `undefined` when unrecognized.
  */
-export function normalizeMode(value: unknown): RuntimeMode | undefined {
+export function normalizeMode(value: unknown): CavemanMode | undefined {
   if (typeof value !== 'string') return undefined
   const normalized = value.trim().toLowerCase()
   return RUNTIME_MODES.find((mode) => mode === normalized)
@@ -89,7 +86,7 @@ export interface DefaultModeSources {
  * @param sources - injectable overrides for tests.
  * @returns the resolved startup level.
  */
-export function resolveDefaultMode(sources: DefaultModeSources = {}): RuntimeMode {
+export function resolveDefaultMode(sources: DefaultModeSources = {}): CavemanMode {
   const configured = normalizeMode(sources.configured)
   if (configured !== undefined) return configured
 

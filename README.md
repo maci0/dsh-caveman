@@ -194,6 +194,8 @@ never overwritten):
 ones and leaves patched ones for manual re-adaptation. Both accept
 `--ref <tag|sha>` to pin (default: `main`). `tests/sync.test.ts` asserts the
 steady state — 12 clean, 5 patched-stale — so new upstream drift fails loudly.
+The network assertion runs only with `DSH_SYNC_CHECK=1`; plain `npm test`
+skips it, keeping the suite offline and fast.
 
 ## Uninstall
 

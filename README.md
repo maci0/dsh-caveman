@@ -128,13 +128,24 @@ second copy.
 ## Development
 
 ```sh
-npm install         # real install
+npm install --legacy-peer-deps   # the harness packages are optional peers
 npm run build       # tsc -p tsconfig.build.json -> lib/index.js + lib/types/
 npm test            # node --test tests/*.test.ts (Node ^22.19 || >=24, no build step)
 npm run typecheck   # tsc -p tsconfig.json
 npm run sync:check  # diff bundled files against upstream main (needs network)
 npm run sync        # overwrite stale verbatim files (refuses dirty tree w/o --force)
 ```
+
+The harness packages this plugin imports at runtime — `@deepseek-ai/dsh-tools`,
+`@deepseek-ai/dsh-skill`, `@deepseek-ai/schemastery` — are **optional peer
+dependencies**, not installed ones; `yaml` is the only real dependency. That
+shape is deliberate. `@deepseek-ai/dsh-tools` keys its runtime scheduler on a
+module-level `Symbol`, so a second physical copy in the profile hands the tool
+layer a different symbol than the host's and every tool call dies with
+`Cannot read properties of undefined (reading 'prepare')`. Peers leave
+resolution to the installation, where exactly one copy exists; a standalone
+clone gets them from `devDependencies`, which is why the local install needs
+`--legacy-peer-deps`.
 
 The suite covers level normalization and filtering, the fake-host surface, the skills
 provider, the compress pipeline, and a real Cordis composition mount next to the real

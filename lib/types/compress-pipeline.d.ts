@@ -25,7 +25,7 @@ export type CompressOutcome = {
 };
 /**
  * Compress one file in place, keeping an out-of-tree backup.
- * @param inputPath - file to compress (resolved before locking).
+ * @param inputPath - file to compress.
  * @param maxFileSize - configured size cap in bytes; defaults to the packaged 500000.
  * @returns the outcome; the file is untouched unless `ok` is true.
  */

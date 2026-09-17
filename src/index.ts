@@ -36,7 +36,6 @@ import {
   normalizeMode,
   resolveDefaultMode,
   RUNTIME_MODES,
-  VALID_MODES,
   type CavemanMode,
 } from './modes.ts'
 import { createSkillProvider } from './skills.ts'
@@ -64,9 +63,18 @@ export const name = 'caveman'
  */
 export const CAVEMAN_SETTINGS_NAMESPACE = 'caveman'
 
+/**
+ * Every accepted level as a schema union, shared by the persisted settings and
+ * the plugin row so the accepted set is declared once.
+ */
+const ModeSchema = z.union([...RUNTIME_MODES])
+
+/** The levels a one-shot `once` call accepts: every level but `off`. */
+const ONCE_MODES = RUNTIME_MODES.filter((mode) => mode !== 'off')
+
 /** Persisted configuration. Every caveman level persists; there is no session-only level. */
 export const CavemanSettings = z.object({
-  mode: z.union([...RUNTIME_MODES]).default(DEFAULT_MODE),
+  mode: ModeSchema.default(DEFAULT_MODE),
   compressBackupDir: z.string().default(''),
 })
 
@@ -90,7 +98,7 @@ export interface Config {
 
 /** Row schema: the accepted levels and the size cap live here. */
 export const Config: z<Config> = z.object({
-  defaultMode: z.union([...RUNTIME_MODES]),
+  defaultMode: ModeSchema,
   maxFileSize: z.number().default(MAX_FILE_SIZE),
 })
 
@@ -385,12 +393,12 @@ function createModeTool(
     parameters: {
       mode: {
         type: 'string',
-        enum: [...VALID_MODES],
+        enum: [...RUNTIME_MODES],
         description: 'Level to activate and persist. Omit to report the current level.',
       },
       once: {
         type: 'string',
-        enum: [...VALID_MODES.filter((mode) => mode !== 'off')],
+        enum: [...ONCE_MODES],
         description: 'Level for this call only. Not persisted; `mode` wins when both are given.',
       },
       usage: {
@@ -403,11 +411,11 @@ function createModeTool(
         type: 'object',
         additionalProperties: false,
         properties: {
-          mode: { type: 'string', enum: [...VALID_MODES], required: true },
-          previous: { type: 'string', enum: [...VALID_MODES], required: true },
+          mode: { type: 'string', enum: [...RUNTIME_MODES], required: true },
+          previous: { type: 'string', enum: [...RUNTIME_MODES], required: true },
           changed: { type: 'boolean', required: true },
           active: { type: 'boolean', required: true },
-          once: { type: 'string', enum: [...VALID_MODES.filter((mode) => mode !== 'off')] },
+          once: { type: 'string', enum: [...ONCE_MODES] },
           usage: {
             type: 'object',
             additionalProperties: false,
@@ -528,6 +536,18 @@ function createCompressTool(syncBackupDir: () => void, maxFileSize: number) {
 }
 
 /**
+ * Phrase one successful compression. Shared by the model-facing tool and the
+ * human command, which report the same three numbers.
+ * @param originalChars - body length before compression.
+ * @param compressedChars - body length after compression.
+ * @param backupPath - out-of-tree backup file path.
+ * @returns the sentence both surfaces report.
+ */
+function compressSentence(originalChars: number, compressedChars: number, backupPath: string): string {
+  return `Compressed ${originalChars} to ${compressedChars} chars. Original backed up at ${backupPath}.`
+}
+
+/**
  * Render the canonical compress value for the model.
  * @param value - the canonical value returned by `execute`.
  * @returns model-facing prose.
@@ -535,13 +555,13 @@ function createCompressTool(syncBackupDir: () => void, maxFileSize: number) {
 function renderCompressResult(value: unknown): string {
   const record = (value ?? {}) as Record<string, unknown>
   if (record['ok'] !== true) {
-    const reason = typeof record['reason'] === 'string' ? record['reason'] : 'compression failed'
-    return reason
+    return typeof record['reason'] === 'string' ? record['reason'] : 'compression failed'
   }
-  const backup = typeof record['backupPath'] === 'string' ? record['backupPath'] : 'unknown'
-  const before = typeof record['originalChars'] === 'number' ? record['originalChars'] : 0
-  const after = typeof record['compressedChars'] === 'number' ? record['compressedChars'] : 0
-  return `Compressed ${before} to ${after} chars. Original backed up at ${backup}.`
+  return compressSentence(
+    typeof record['originalChars'] === 'number' ? record['originalChars'] : 0,
+    typeof record['compressedChars'] === 'number' ? record['compressedChars'] : 0,
+    typeof record['backupPath'] === 'string' ? record['backupPath'] : 'unknown',
+  )
 }
 
 /**
@@ -604,7 +624,7 @@ async function handleModeCommand(
   if (requested === undefined) {
     return {
       kind: 'error',
-      text: `Unknown caveman level "${invocation.rawInput.trim()}". Use one of: ${VALID_MODES.join(', ')}.`,
+      text: `Unknown caveman level "${invocation.rawInput.trim()}". Use one of: ${RUNTIME_MODES.join(', ')}.`,
     }
   }
 
@@ -632,6 +652,6 @@ async function handleCompressCommand(
   if (!outcome.ok) return { kind: 'error', text: outcome.reason }
   return {
     kind: 'success',
-    text: `Compressed ${outcome.originalChars} to ${outcome.compressedChars} chars. Original backed up at ${outcome.backupPath}.`,
+    text: compressSentence(outcome.originalChars, outcome.compressedChars, outcome.backupPath),
   }
 }

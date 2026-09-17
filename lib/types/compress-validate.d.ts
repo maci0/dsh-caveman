@@ -15,10 +15,17 @@ export interface ValidationResult {
     readonly warnings: readonly string[];
 }
 export declare function extractHeadings(text: string): [string, string][];
+/**
+ * Every fenced and indented code block, in document order.
+ *
+ * The masker already owns the definition of "code block" for the rewriter; the
+ * validator reuses it so both agree on what must survive byte-identical.
+ * @param text - markdown body.
+ * @returns the block texts.
+ */
 export declare function extractCodeBlocks(text: string): string[];
 export declare function extractUrls(text: string): Set<string>;
 export declare function extractPaths(text: string): Set<string>;
-export declare function countBullets(text: string): number;
 export declare function extractInlineCodes(text: string): string[];
 /**
  * Validate a compressed candidate against its original.

@@ -1,6 +1,6 @@
 /**
- * File handling for the compress pipeline: frontmatter splitting, sensitive
- * path refusal, atomic writes, backups, locks, and source reading.
+ * File handling for the compress pipeline: sensitive path refusal, atomic
+ * writes, backups, and source reading.
  *
  * TypeScript port of the non-model parts of
  * `skills/caveman-compress/scripts/compress.py` (MIT, © JuliusBrussee).
@@ -11,8 +11,8 @@
  * @module dsh-caveman/compress-files
  */
 
-import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs'
-import { createHash, randomBytes } from 'node:crypto'
+import { chmodSync, closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
@@ -22,20 +22,6 @@ import { basename, dirname, join } from 'node:path'
  * and threads it through the pipeline; this is only the default.
  */
 export const MAX_FILE_SIZE = 500_000
-
-const FRONTMATTER_REGEX = /^(---\r?\n.*?\r?\n---\r?\n)(.*)/s
-
-/**
- * Split YAML frontmatter from the body. Frontmatter is preserved verbatim
- * through compression; files without it pass through unchanged.
- * @param text - full file text.
- * @returns `[frontmatter, body]`.
- */
-export function splitFrontmatter(text: string): [string, string] {
-  const match = FRONTMATTER_REGEX.exec(text)
-  if (match?.[1] === undefined) return ['', text]
-  return [match[1], match[2] ?? '']
-}
 
 const SENSITIVE_BASENAME_REGEX = /^(\.env(\..+)?|\.netrc|credentials(\..+)?|secrets?(\..+)?|passwords?(\..+)?|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|authorized_keys|known_hosts|.*\.(pem|key|p12|pfx|crt|cer|jks|keystore|asc|gpg))$/i
 
@@ -62,9 +48,10 @@ export function isSensitivePath(filePath: string): boolean {
   return parts.some((part) => SENSITIVE_NAME_TOKENS.some((token) => part.includes(token)))
 }
 
-function stateBaseDir(kind: 'backups' | 'locks'): string {
+/** Platform data dir holding out-of-tree backups. */
+function backupsBaseDir(): string {
   const base = process.env['XDG_DATA_HOME'] ?? join(homedir(), '.local', 'share')
-  return join(base, 'caveman-compress', kind)
+  return join(base, 'caveman-compress', 'backups')
 }
 
 /** Override root for backups, set from the `compressBackupDir` setting. Empty = platform default. */
@@ -86,7 +73,7 @@ export function setBackupRootOverride(dir: string): void {
  * @returns the backup directory.
  */
 export function backupDirFor(filePath: string): string {
-  const root = backupRootOverride !== '' ? backupRootOverride : stateBaseDir('backups')
+  const root = backupRootOverride !== '' ? backupRootOverride : backupsBaseDir()
   return join(root, basename(dirname(filePath)))
 }
 
@@ -98,17 +85,6 @@ export function backupDirFor(filePath: string): string {
 export function backupPathFor(filePath: string): string {
   const stem = basename(filePath).replace(/\.[^.]*$/, '')
   return join(backupDirFor(filePath), `${stem}.original.md`)
-}
-
-/**
- * Lock path for a source file, derived from its backup path so the two can't
- * drift apart. Hashed to stay filesystem-safe.
- * @param filePath - absolute source path.
- * @returns the lock file path.
- */
-export function lockPathFor(filePath: string): string {
-  const digest = createHash('sha256').update(backupPathFor(filePath), 'utf8').digest('hex').slice(0, 16)
-  return join(stateBaseDir('locks'), `${digest}.lock`)
 }
 
 /**
@@ -181,53 +157,4 @@ export function readSource(filePath: string): SourceFile {
   const lf = (text.match(/\n/g) ?? []).length
   const newline = crlf * 2 > lf ? '\r\n' as const : '\n' as const
   return { text: text.replace(/\r\n/g, '\n').replace(/\r/g, '\n'), newline, raw }
-}
-
-/**
- * Best-effort cross-process lock: create the lock dir, refuse symlinks, and
- * run the callback. Unlike the Python original there is no blocking wait —
- * a held lock fails fast with a clear message instead of hanging a model
- * turn for up to 15 minutes.
- * @param filePath - absolute source path.
- * @param run - work to do under the lock.
- * @returns the callback's return.
- */
-export function withFileLock<T>(filePath: string, run: () => T): T {
-  const lockPath = lockPathFor(filePath)
-  const lockDir = dirname(lockPath)
-  let stat: ReturnType<typeof statSync> | undefined
-  try {
-    stat = statSync(lockDir)
-  } catch {
-    stat = undefined
-  }
-  if (stat !== undefined && !stat.isDirectory()) {
-    throw new Error(`Refusing to use lock path through a non-directory: ${lockDir}`)
-  }
-  mkdirSync(lockDir, { recursive: true })
-  try {
-    chmodSync(lockDir, 0o700)
-  } catch {
-    // Some mounts reject chmod; coordination still works without it.
-  }
-  const marker = join(lockDir, `${basename(lockPath)}.held`)
-  if (existsSync(marker)) {
-    throw new Error(
-      `Another caveman-compress run appears to be compressing ${filePath}. `
-      + 'Retry once it finishes.',
-    )
-  }
-  // Plain write, deliberately not atomic+durable: the marker is advisory and
-  // must vanish on crash, so fsync/temp/rename buys nothing. A stale marker
-  // from a killed run fails the next run loudly instead of hanging it.
-  writeFileSync(marker, `${process.pid}\n`, 'utf8')
-  try {
-    return run()
-  } finally {
-    try {
-      unlinkSync(marker)
-    } catch {
-      // Ignore cleanup failure; the lock is advisory.
-    }
-  }
 }

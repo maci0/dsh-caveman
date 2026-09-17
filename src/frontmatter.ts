@@ -1,5 +1,6 @@
 /**
- * YAML-frontmatter reader for the bundled `SKILL.md` files.
+ * YAML-frontmatter reader for the bundled `SKILL.md` files and the compress
+ * pipeline.
  *
  * The parsing is `yaml`'s (`parse`), the same library upstream's filesystem
  * skill provider depends on, so every valid YAML frontmatter form is read the
@@ -18,43 +19,34 @@ import { parse } from 'yaml'
 
 /** Parsed frontmatter plus the markdown body that follows it. */
 export interface Frontmatter {
+  /** The verbatim frontmatter block including both delimiters, or `''` when absent. */
+  readonly raw: string
   /** Frontmatter keys and their YAML values (`string`, `boolean`, map, list, …). */
   readonly data: Readonly<Record<string, unknown>>
   /** Everything after the closing delimiter, or the whole source when absent. */
   readonly body: string
 }
 
-const DELIMITER = /^---[ \t]*$/
+const FRONTMATTER_BLOCK = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
 
 /**
  * Parse leading YAML frontmatter from a markdown document.
  * @param source - full file contents.
- * @returns the parsed keys and the remaining body.
+ * @returns the verbatim block, the parsed keys, and the remaining body.
  */
 export function parseFrontmatter(source: string): Frontmatter {
   const text = source.replace(/^\uFEFF/, '')
-  const lines = text.split(/\r?\n/)
+  const match = FRONTMATTER_BLOCK.exec(text)
+  if (match === null) return { raw: '', data: {}, body: text }
 
-  if (lines[0] === undefined || !DELIMITER.test(lines[0])) {
-    return { data: {}, body: text }
-  }
-
-  let closing = -1
-  for (let index = 1; index < lines.length; index += 1) {
-    if (DELIMITER.test(lines[index] ?? '')) {
-      closing = index
-      break
-    }
-  }
-  if (closing === -1) {
-    return { data: {}, body: text }
-  }
-
-  const body = lines.slice(closing + 1).join('\n')
-  const parsed: unknown = parse(lines.slice(1, closing).join('\n'))
+  const raw = match[0]
+  // The body keeps its own bytes apart from line terminators, which are
+  // normalized the way the previous line-split reader normalized them.
+  const body = text.slice(raw.length).replace(/\r\n/g, '\n')
+  const parsed: unknown = parse(match[1] ?? '')
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { data: {}, body }
+    return { raw, data: {}, body }
   }
 
-  return { data: parsed as Record<string, unknown>, body }
+  return { raw, data: parsed as Record<string, unknown>, body }
 }

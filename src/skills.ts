@@ -11,15 +11,15 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { BUNDLED_SKILL_RANK, isSkillName } from '@deepseek-ai/dsh-skill'
-import { parseFrontmatter } from './frontmatter.ts'
 import type {
-  SkillCandidateLike,
-  SkillDefinitionLike,
-  SkillInvocationPolicyLike,
-  SkillLookupOptionsLike,
-  SkillProviderLike,
-  SkillSummaryLike,
-} from './host.ts'
+  SkillCandidate,
+  SkillDefinition,
+  SkillInvocationPolicy,
+  SkillLookupOptions,
+  SkillSummary,
+} from '@deepseek-ai/dsh-skill'
+import { parseFrontmatter } from './frontmatter.ts'
+import type { SkillProviderLike } from './host.ts'
 
 /** Provider name inside the skill registry. */
 const PROVIDER_NAME = 'caveman'
@@ -49,7 +49,7 @@ export interface CavemanSkill {
   /** Optional extra routing guidance from `whenToUse`. */
   readonly whenToUse?: string
   /** Resolved invocation controls from the two canonical frontmatter keys. */
-  readonly invocation: SkillInvocationPolicyLike
+  readonly invocation: SkillInvocationPolicy
   /** Instruction body with frontmatter removed. */
   readonly content: string
   /** Frontmatter keys this provider does not project (`license`, `tools`, …). */
@@ -179,7 +179,7 @@ export async function discoverSkills(
  * @returns a provider whose candidates are summaries and whose bodies come from disk.
  */
 export function createSkillProvider(options: SkillProviderOptions): SkillProviderLike {
-  const summaryOf = (skill: CavemanSkill): SkillSummaryLike => ({
+  const summaryOf = (skill: CavemanSkill): SkillSummary => ({
     path: skill.path,
     name: skill.name,
     description: skill.description,
@@ -193,7 +193,7 @@ export function createSkillProvider(options: SkillProviderOptions): SkillProvide
   return {
     name: PROVIDER_NAME,
 
-    async list(lookup: SkillLookupOptionsLike = {}): Promise<readonly SkillCandidateLike[]> {
+    async list(lookup: SkillLookupOptions = {}): Promise<readonly SkillCandidate[]> {
       lookup.signal?.throwIfAborted()
       const skills = await discoverSkills(options.skillsDir, options.onWarn)
       lookup.signal?.throwIfAborted()
@@ -206,9 +206,9 @@ export function createSkillProvider(options: SkillProviderOptions): SkillProvide
     },
 
     async get(
-      candidate: SkillCandidateLike,
-      lookup: SkillLookupOptionsLike = {},
-    ): Promise<SkillDefinitionLike | undefined> {
+      candidate: SkillCandidate,
+      lookup: SkillLookupOptions = {},
+    ): Promise<SkillDefinition | undefined> {
       if (typeof candidate.locator !== 'string') return undefined
 
       lookup.signal?.throwIfAborted()

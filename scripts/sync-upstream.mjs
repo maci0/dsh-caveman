@@ -72,14 +72,11 @@ function upstreamPath(local) {
   return UPSTREAM_OVERRIDES[local] ?? local
 }
 
-function fetchUpstream(repo, ref, path) {
+async function fetchUpstream(repo, ref, path) {
   const url = `${repo.replace(/\/$/, '')}/raw/${ref}/${path}`
-  try {
-    const out = execFileSync('curl', ['-sfL', '--max-time', '60', url], { maxBuffer: 16 * 1024 * 1024 })
-    return Buffer.from(out)
-  } catch (error) {
-    throw new Error(`fetch failed for ${path}@${ref}: ${error.message}`)
-  }
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`fetch failed for ${path}@${ref}: HTTP ${response.status}`)
+  return Buffer.from(await response.arrayBuffer())
 }
 
 function isWorkingTreeClean() {
@@ -91,7 +88,7 @@ function isWorkingTreeClean() {
   }
 }
 
-function main() {
+async function main() {
   const { command, ref: refOverride, force } = parseArgs(process.argv)
   const manifest = loadManifest()
   const ref = refOverride ?? manifest.ref
@@ -101,19 +98,17 @@ function main() {
   ]
 
   const stale = []
-  const cache = new Map()
   for (const { file, kind } of all) {
     const localPath = join(root, file)
     const local = existsSync(localPath) ? readFileSync(localPath) : null
     let remote
     try {
-      if (!cache.has(file)) cache.set(file, fetchUpstream(manifest.upstream, ref, upstreamPath(file)))
-      remote = cache.get(file)
+      remote = await fetchUpstream(manifest.upstream, ref, upstreamPath(file))
     } catch (error) {
       console.error(`error: ${error.message}`)
       process.exit(2)
     }
-    if (local === null || !local.equals(remote)) stale.push({ file, kind, missing: local === null })
+    if (local === null || !local.equals(remote)) stale.push({ file, kind, missing: local === null, remote })
   }
 
   if (command === 'check') {
@@ -138,10 +133,10 @@ function main() {
   }
   const patched = stale.filter((s) => s.kind === 'patched')
   const verbatim = stale.filter((s) => s.kind === 'verbatim')
-  for (const { file } of verbatim) {
+  for (const { file, remote } of verbatim) {
     const localPath = join(root, file)
     mkdirSync(dirname(localPath), { recursive: true })
-    writeFileSync(localPath, cache.get(file))
+    writeFileSync(localPath, remote)
     console.log(`synced: ${file}`)
   }
   if (patched.length > 0) {
@@ -152,4 +147,4 @@ function main() {
   process.exit(stale.length === 0 ? 0 : 1)
 }
 
-main()
+await main()

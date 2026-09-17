@@ -16,12 +16,3 @@ export type FileType = 'natural_language' | 'code' | 'config' | 'unknown';
  * @returns the classification.
  */
 export declare function detectFileType(basename: string, readText?: () => string): FileType;
-/**
- * Whether the file should be compressed: it exists and is natural language.
- * Backup files are never recompressed.
- * @param basename - file basename.
- * @param isFile - whether the path is a file.
- * @param readText - content reader for extensionless sniffing.
- * @returns true when compression applies.
- */
-export declare function shouldCompress(basename: string, isFile: boolean, readText?: () => string): boolean;

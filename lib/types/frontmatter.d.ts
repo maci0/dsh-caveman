@@ -1,5 +1,6 @@
 /**
- * YAML-frontmatter reader for the bundled `SKILL.md` files.
+ * YAML-frontmatter reader for the bundled `SKILL.md` files and the compress
+ * pipeline.
  *
  * The parsing is `yaml`'s (`parse`), the same library upstream's filesystem
  * skill provider depends on, so every valid YAML frontmatter form is read the
@@ -15,6 +16,8 @@
  */
 /** Parsed frontmatter plus the markdown body that follows it. */
 export interface Frontmatter {
+    /** The verbatim frontmatter block including both delimiters, or `''` when absent. */
+    readonly raw: string;
     /** Frontmatter keys and their YAML values (`string`, `boolean`, map, list, …). */
     readonly data: Readonly<Record<string, unknown>>;
     /** Everything after the closing delimiter, or the whole source when absent. */
@@ -23,6 +26,6 @@ export interface Frontmatter {
 /**
  * Parse leading YAML frontmatter from a markdown document.
  * @param source - full file contents.
- * @returns the parsed keys and the remaining body.
+ * @returns the verbatim block, the parsed keys, and the remaining body.
  */
 export declare function parseFrontmatter(source: string): Frontmatter;

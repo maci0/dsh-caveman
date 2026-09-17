@@ -3,16 +3,17 @@ import { test } from 'node:test'
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, basename } from 'node:path'
-import { detectFileType, shouldCompress } from '../src/compress-detect.ts'
+import { detectFileType } from '../src/compress-detect.ts'
+import { parseFrontmatter } from '../src/frontmatter.ts'
 import { extractCodeBlocks, extractHeadings, extractInlineCodes, extractPaths, extractUrls, validate } from '../src/compress-validate.ts'
 import { compressBody, compressLine, isSmaller, maskCodeBlocks, restoreCodeBlocks } from '../src/compress-rules.ts'
-import { backupPathFor, isSensitivePath, setBackupRootOverride, splitFrontmatter, writeTextAtomic } from '../src/compress-files.ts'
+import { backupPathFor, isSensitivePath, setBackupRootOverride, writeTextAtomic } from '../src/compress-files.ts'
 import { compressFile } from '../src/compress-pipeline.ts'
 
 test('detectFileType classifies by extension, name, and content', () => {
   assert.equal(detectFileType('notes.md'), 'natural_language')
-  assert.equal(detectFileType('app.ts'), 'code')
-  assert.equal(detectFileType('config.json'), 'config')
+  assert.equal(detectFileType('app.ts'), 'unknown')
+  assert.equal(detectFileType('config.json'), 'unknown')
   assert.equal(detectFileType('Dockerfile'), 'code')
   assert.equal(detectFileType('CMakeLists.txt'), 'code')
   assert.equal(detectFileType('weird.xyz'), 'unknown')
@@ -21,11 +22,16 @@ test('detectFileType classifies by extension, name, and content', () => {
   assert.equal(detectFileType('TODO', () => { throw new Error('unreadable') }), 'unknown')
 })
 
-test('shouldCompress skips non-files and backups', () => {
-  assert.equal(shouldCompress('notes.md', true), true)
-  assert.equal(shouldCompress('notes.md', false), false)
-  assert.equal(shouldCompress('app.ts', true), false)
-  assert.equal(shouldCompress('notes.original.md', true), false)
+test('compressFile skips a non-file path and never recompresses a backup', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'caveman-skip-'))
+  try {
+    const backup = join(root, 'notes.original.md')
+    await writeFile(backup, '# Notes\n\nYou should always make sure to run the tests before you push.\n')
+    assert.match((compressFile(backup) as { reason: string }).reason, /not natural language/)
+    assert.match((compressFile(root) as { reason: string }).reason, /Not a file/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('validate passes a faithful compression and fails a lossy one', () => {
@@ -103,8 +109,10 @@ test('file helpers refuse sensitive paths and bad encodings', () => {
   assert.equal(isSensitivePath('/home/u/.aws/credentials'), true)
   assert.equal(isSensitivePath('/home/u/secrets.txt'), true)
   assert.equal(isSensitivePath('/home/u/notes.md'), false)
-  assert.deepEqual(splitFrontmatter('---\na: b\n---\nbody\n'), ['---\na: b\n---\n', 'body\n'])
-  assert.deepEqual(splitFrontmatter('plain\n'), ['', 'plain\n'])
+  assert.deepEqual(parseFrontmatter('---\na: b\n---\nbody\n'), {
+    raw: '---\na: b\n---\n', data: { a: 'b' }, body: 'body\n',
+  })
+  assert.deepEqual(parseFrontmatter('plain\n'), { raw: '', data: {}, body: 'plain\n' })
   assert.match(backupPathFor('/a/b/notes.md'), /caveman-compress\/backups\/b\/notes\.original\.md$/)
 })
 

@@ -12,10 +12,8 @@
  */
 /** Every accepted level; all persist as a default. */
 export declare const RUNTIME_MODES: readonly ['off', 'lite', 'full', 'ultra', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra'];
-/** Every accepted level. All caveman levels persist, so this equals {@link RUNTIME_MODES}. */
-export declare const VALID_MODES: readonly ["off", "lite", "full", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"];
 /** Any level the plugin accepts. */
-export type CavemanMode = (typeof VALID_MODES)[number];
+export type CavemanMode = (typeof RUNTIME_MODES)[number];
 /** Level used when neither config nor environment sets one. */
 export declare const DEFAULT_MODE: CavemanMode;
 /**

@@ -155,8 +155,40 @@ function expand(react: ReactStub, component: () => Element | null): Element[] {
   return render(react, component)
 }
 
+/** Fresh write log for the card's settings scope. */
+function newCalls(): { set: unknown[][]; unset: unknown[][] } {
+  return { set: [], unset: [] }
+}
+
+/** The seven persisted levels, in the order the card renders them. */
+const LEVEL_LABELS = ['Off', 'Lite', 'Full', 'Ultra', 'Wenyan-Lite', 'Wenyan-Full', 'Wenyan-Ultra'] as const
+
+/**
+ * Assert the level radios against that table: every level present in order,
+ * checked for `selected` alone. Returns them for follow-up work.
+ */
+function assertLevels(tree: Element[], selected: string): Element[] {
+  const levels = radios(tree).slice(0, 7)
+  assert.deepEqual(levels.map((radio) => radio.children[0]), [...LEVEL_LABELS])
+  assert.deepEqual(
+    levels.map((radio) => radio.props['aria-checked']),
+    LEVEL_LABELS.map((label) => label === selected),
+  )
+  return levels
+}
+
+/** Load the bundle, open the settings card, and render it expanded. */
+function openCard(
+  snapshot: Snapshot,
+  calls: { set: unknown[][]; unset: unknown[][] } = newCalls(),
+) {
+  const bundle = loadBundle(snapshot, calls)
+  const component = componentFor(bundle.registered, 'settings.plugin.item')
+  return { ...bundle, calls, component, open: expand(bundle.react, component) }
+}
+
 test('the card binds the caveman namespace and registers into the plugins tab', () => {
-  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
+  const calls = newCalls()
   const { exported, bound, injected, registered, registeredLocales } = loadBundle(
     { status: 'ready', value: { mode: 'lite' }, user: { mode: 'lite' }, writable: true },
     calls,
@@ -179,7 +211,7 @@ test('the card binds the caveman namespace and registers into the plugins tab', 
 })
 
 test('the card renders collapsed, naming the plugin and the current level', () => {
-  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
+  const calls = newCalls()
   const { registered, react } = loadBundle(
     { status: 'ready', value: { mode: 'lite' }, user: {}, writable: true },
     calls,
@@ -203,37 +235,22 @@ test('the card renders collapsed, naming the plugin and the current level', () =
 })
 
 test('expanding reveals one radio per persisted level and writes the chosen one', () => {
-  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
-  const { registered, react } = loadBundle(
-    { status: 'ready', value: { mode: 'full' }, user: {}, writable: true },
-    calls,
-  )
-
-  const component = componentFor(registered, 'settings.plugin.item')
-  const open = expand(react, component)
+  const { calls, open } = openCard({ status: 'ready', value: { mode: 'full' }, user: {}, writable: true })
 
   assert.equal(buttons(open)[0]?.props['aria-expanded'], true)
   assert.equal(buttons(open)[0]?.props['aria-label'], `Collapse: Caveman v${pkgVersion}`)
-  const levels = radios(open).slice(0, 7)
-  assert.deepEqual(levels.map((radio) => radio.children[0]), ['Off', 'Lite', 'Full', 'Ultra', 'Wenyan-Lite', 'Wenyan-Full', 'Wenyan-Ultra'])
-  assert.deepEqual(levels.map((radio) => radio.props['aria-checked']), [false, false, true, false, false, false, false])
+  const levels = assertLevels(open, 'Full')
 
   ;(levels[6]?.props['onClick'] as () => void)()
   assert.deepEqual(calls.set, [['mode', 'wenyan-ultra']])
 })
 
 test('the backup-dir input writes its own field and leaves the level alone', () => {
-  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
-  const { registered, react } = loadBundle(
+  const { calls, component, open, react } = openCard(
     { status: 'ready', value: { mode: 'full', compressBackupDir: '' }, user: {}, writable: true },
-    calls,
   )
 
-  const component = componentFor(registered, 'settings.plugin.item')
-  const open = expand(react, component)
-
-  const levels = radios(open).slice(0, 7)
-  assert.deepEqual(levels.map((radio) => radio.children[0]), ['Off', 'Lite', 'Full', 'Ultra', 'Wenyan-Lite', 'Wenyan-Full', 'Wenyan-Ultra'])
+  assertLevels(open, 'Full')
 
   const inputs = open.filter((element) => element.type === 'input')
   assert.equal(inputs.length, 1)
@@ -248,14 +265,7 @@ test('the backup-dir input writes its own field and leaves the level alone', () 
 })
 
 test('an overridden level is called out and offers a reset', () => {
-  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
-  const { registered, react } = loadBundle(
-    { status: 'ready', value: { mode: 'ultra' }, user: { mode: 'ultra' }, writable: true },
-    calls,
-  )
-
-  const component = componentFor(registered, 'settings.plugin.item')
-  const open = expand(react, component)
+  const { calls, open } = openCard({ status: 'ready', value: { mode: 'ultra' }, user: { mode: 'ultra' }, writable: true })
 
   const text = open.map((element) => element.children[0])
   assert.ok(text.includes('Terse-talk mode — level: Ultra (overridden).'))
@@ -267,22 +277,14 @@ test('an overridden level is called out and offers a reset', () => {
 })
 
 test('the card disables its controls when the host document is not writable', () => {
-  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
-  const { registered, react } = loadBundle(
-    { status: 'ready', value: { mode: 'full' }, user: {}, writable: false },
-    calls,
-  )
+  const { open } = openCard({ status: 'ready', value: { mode: 'full' }, user: {}, writable: false })
 
-  const component = componentFor(registered, 'settings.plugin.item')
-  const open = expand(react, component)
-
-  const levels = radios(open).slice(0, 7)
-  assert.equal(levels.length, 7)
+  const levels = assertLevels(open, 'Full')
   for (const level of levels) assert.equal(level.props['disabled'], true)
 })
 
 test('an unavailable namespace renders no trace of the card', () => {
-  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
+  const calls = newCalls()
   const { registered, react } = loadBundle(
     { status: 'loading', value: undefined, user: undefined, writable: false },
     calls,
@@ -294,14 +296,7 @@ test('an unavailable namespace renders no trace of the card', () => {
 })
 
 test('the chrome is class-based, so no state change goes through React style diffing', () => {
-  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
-  const { registered, react } = loadBundle(
-    { status: 'ready', value: { mode: 'lite' }, user: { mode: 'lite' }, writable: true },
-    calls,
-  )
-
-  const component = componentFor(registered, 'settings.plugin.item')
-  const open = expand(react, component)
+  const { open } = openCard({ status: 'ready', value: { mode: 'lite' }, user: { mode: 'lite' }, writable: true })
 
   // An inline object is what let a removed longhand decompose a border
   // shorthand and blank a deselected pill; classes keep every state change out
@@ -313,18 +308,17 @@ test('the chrome is class-based, so no state change goes through React style dif
 
   assert.match(String(open.filter((element) => element.type === 'li')[0]?.props['className']), /dc-card-open/)
 
-  const pills = radios(open).slice(0, 7)
-  assert.equal(pills.length, 7)
-  const selected = pills.filter((pill) => pill.props['aria-checked'] === true)
+  const levels = assertLevels(open, 'Lite')
+  const selected = levels.filter((pill) => pill.props['aria-checked'] === true)
   assert.equal(selected.length, 1)
   assert.equal(selected[0]?.props['className'], 'dc-pill dc-pill-selected')
-  for (const pill of pills.filter((candidate) => candidate.props['aria-checked'] === false)) {
+  for (const pill of levels.filter((candidate) => candidate.props['aria-checked'] === false)) {
     assert.equal(pill.props['className'], 'dc-pill')
   }
 })
 
 test('the composer chip states the level and vanishes when off or unavailable', () => {
-  const calls = { set: [] as unknown[][], unset: [] as unknown[][] }
+  const calls = newCalls()
 
   const active = loadBundle(
     { status: 'ready', value: { mode: 'ultra' }, user: {}, writable: true },

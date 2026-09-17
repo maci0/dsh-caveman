@@ -7,7 +7,8 @@
  *
  * @module dsh-caveman/skills
  */
-import type { SkillInvocationPolicyLike, SkillProviderLike } from './host.ts';
+import type { SkillInvocationPolicy } from '@deepseek-ai/dsh-skill';
+import type { SkillProviderLike } from './host.ts';
 /** One parsed bundled skill. */
 export interface CavemanSkill {
     /** Kebab-case skill name from frontmatter, or the directory name. */
@@ -17,7 +18,7 @@ export interface CavemanSkill {
     /** Optional extra routing guidance from `whenToUse`. */
     readonly whenToUse?: string;
     /** Resolved invocation controls from the two canonical frontmatter keys. */
-    readonly invocation: SkillInvocationPolicyLike;
+    readonly invocation: SkillInvocationPolicy;
     /** Instruction body with frontmatter removed. */
     readonly content: string;
     /** Frontmatter keys this provider does not project (`license`, `tools`, …). */

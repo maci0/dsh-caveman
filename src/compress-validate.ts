@@ -9,12 +9,13 @@
  * @module dsh-caveman/compress-validate
  */
 
+import { maskCodeBlocks } from './compress-rules.ts'
+
 const URL_REGEX = /https?:\/\/[^\s)]+/g
 const FENCE_OPEN_REGEX = /^(\s{0,3})(`{3,}|~{3,})(.*)$/
 const FENCE_MARKER_LINE_REGEX = /^\s*(?:`{3,}|~{3,})[^`~]*$/
 const HEADING_REGEX = /^(#{1,6})\s+(.*)/gm
 const BULLET_REGEX = /^\s*[-*+]\s+/gm
-const LIST_ITEM_REGEX = /^\s*(?:[-*+]|\d+[.)])\s/
 const PATH_REGEX = /(?:\.\/|\.\.\/|\/|[A-Za-z]:\\)[\w\-\/\\.]+|[\w\-\.]+[\/\\][\w\-\/\\.]+/g
 const DEFINITE_PATH_REGEX = /^(?:\.\/|\.\.\/|\/|[A-Za-z]:\\)|[^\/\\]*\.[A-Za-z0-9]{1,8}$/
 
@@ -69,93 +70,16 @@ function extractFencedSpans(lines: string[]): [number, number][] {
   return spans
 }
 
-function extractIndentedCodeBlocks(text: string): [number, string][] {
-  const blocks: [number, string][] = []
-  const lines = text.split('\n')
-  const fenced = new Set<number>()
-  for (const [start, end] of extractFencedSpans(lines)) {
-    for (let i = start; i < end; i += 1) fenced.add(i)
-  }
-  let inList = false
-  let previousBlank = true
-  let i = 0
-  while (i < lines.length) {
-    const line = lines[i] ?? ''
-    const stripped = line.trim()
-    if (fenced.has(i)) {
-      previousBlank = false
-      i += 1
-      continue
-    }
-    if (stripped === '') {
-      previousBlank = true
-      i += 1
-      continue
-    }
-    const indent = line.length - line.trimStart().length
-    if (LIST_ITEM_REGEX.test(line)) inList = true
-    else if (indent === 0) inList = false
-    if (!inList && previousBlank && indent >= 4) {
-      const start = i
-      const run: string[] = []
-      while (i < lines.length && !fenced.has(i)) {
-        const current = lines[i] ?? ''
-        if (current.trim() === '') {
-          let lookahead = i + 1
-          while (lookahead < lines.length && (lines[lookahead] ?? '').trim() === '') lookahead += 1
-          const next = lines[lookahead] ?? ''
-          if (lookahead < lines.length && !fenced.has(lookahead) && next.length - next.trimStart().length >= 4) {
-            run.push(...lines.slice(i, lookahead))
-            i = lookahead
-            continue
-          }
-          break
-        }
-        if (current.length - current.trimStart().length < 4) break
-        run.push(current)
-        i += 1
-      }
-      if (run.length > 0) blocks.push([start, run.join('\n')])
-      previousBlank = false
-      continue
-    }
-    previousBlank = false
-    i += 1
-  }
-  return blocks
-}
-
+/**
+ * Every fenced and indented code block, in document order.
+ *
+ * The masker already owns the definition of "code block" for the rewriter; the
+ * validator reuses it so both agree on what must survive byte-identical.
+ * @param text - markdown body.
+ * @returns the block texts.
+ */
 export function extractCodeBlocks(text: string): string[] {
-  const blocks: [number, string][] = []
-  const lines = text.split('\n')
-  let i = 0
-  while (i < lines.length) {
-    const open = FENCE_OPEN_REGEX.exec(lines[i] ?? '')
-    if (open?.[2] === undefined) {
-      i += 1
-      continue
-    }
-    const start = i
-    const fenceChar = open[2][0]
-    const fenceLen = open[2].length
-    const blockLines = [lines[i] ?? '']
-    i += 1
-    let closed = false
-    while (i < lines.length) {
-      if (isFenceClose(lines[i] ?? '', fenceChar ?? '', fenceLen)) {
-        blockLines.push(lines[i] ?? '')
-        closed = true
-        i += 1
-        break
-      }
-      blockLines.push(lines[i] ?? '')
-      i += 1
-    }
-    if (closed) blocks.push([start, blockLines.join('\n')])
-  }
-  return [...blocks, ...extractIndentedCodeBlocks(text)]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, block]) => block)
+  return maskCodeBlocks(text).blocks
 }
 
 export function extractUrls(text: string): Set<string> {
@@ -166,7 +90,7 @@ export function extractPaths(text: string): Set<string> {
   return new Set(text.match(PATH_REGEX) ?? [])
 }
 
-export function countBullets(text: string): number {
+function countBullets(text: string): number {
   return text.match(BULLET_REGEX)?.length ?? 0
 }
 

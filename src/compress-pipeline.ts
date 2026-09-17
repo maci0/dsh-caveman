@@ -16,8 +16,9 @@
 
 import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
-import { detectFileType, shouldCompress } from './compress-detect.ts'
-import { backupPathFor, backupDirFor, isSensitivePath, MAX_FILE_SIZE, readSource, withFileLock, writeBytesAtomic, writeTextAtomic, splitFrontmatter } from './compress-files.ts'
+import { detectFileType } from './compress-detect.ts'
+import { backupPathFor, backupDirFor, isSensitivePath, MAX_FILE_SIZE, readSource, writeBytesAtomic, writeTextAtomic } from './compress-files.ts'
+import { parseFrontmatter } from './frontmatter.ts'
 import { compressBody, isSmaller } from './compress-rules.ts'
 import { validate } from './compress-validate.ts'
 
@@ -28,7 +29,7 @@ export type CompressOutcome =
 
 /**
  * Compress one file in place, keeping an out-of-tree backup.
- * @param inputPath - file to compress (resolved before locking).
+ * @param inputPath - file to compress.
  * @param maxFileSize - configured size cap in bytes; defaults to the packaged 500000.
  * @returns the outcome; the file is untouched unless `ok` is true.
  */
@@ -52,10 +53,6 @@ export function compressFile(inputPath: string, maxFileSize: number = MAX_FILE_S
     }
   }
 
-  return withFileLock(filePath, () => compressFileLocked(filePath))
-}
-
-function compressFileLocked(filePath: string): CompressOutcome {
   const name = basename(filePath)
   let source: ReturnType<typeof readSource>
   try {
@@ -63,8 +60,9 @@ function compressFileLocked(filePath: string): CompressOutcome {
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }
-  if (!shouldCompress(name, true, () => source.text)) {
-    return { ok: false, reason: `Skipping: ${detectFileType(name, () => source.text)} is not natural language` }
+  // One classification per run; a backup file is never recompressed.
+  if (detectFileType(name, () => source.text) !== 'natural_language' || name.endsWith('.original.md')) {
+    return { ok: false, reason: `Skipping: ${name} is not natural language` }
   }
   if (source.text.trim() === '') {
     return { ok: false, reason: 'Refusing to compress: file is empty or whitespace-only.' }
@@ -78,7 +76,7 @@ function compressFileLocked(filePath: string): CompressOutcome {
     }
   }
 
-  const [frontmatter, body] = splitFrontmatter(source.text)
+  const { raw, body } = parseFrontmatter(source.text)
   if (body.trim() === '') {
     return { ok: false, reason: 'Refusing to compress: body is empty after frontmatter removal.' }
   }
@@ -91,7 +89,7 @@ function compressFileLocked(filePath: string): CompressOutcome {
     return { ok: false, reason: 'Compressed output is not smaller than input; original left untouched.' }
   }
 
-  const compressed = frontmatter + compressedBody
+  const compressed = raw + compressedBody
   const result = validate(source.text, compressed)
   if (!result.isValid) {
     return {

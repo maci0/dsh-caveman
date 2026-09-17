@@ -22,11 +22,8 @@ export const RUNTIME_MODES = [
   'wenyan-ultra',
 ] as const
 
-/** Every accepted level. All caveman levels persist, so this equals {@link RUNTIME_MODES}. */
-export const VALID_MODES = RUNTIME_MODES
-
 /** Any level the plugin accepts. */
-export type CavemanMode = (typeof VALID_MODES)[number]
+export type CavemanMode = (typeof RUNTIME_MODES)[number]
 
 /** Level used when neither config nor environment sets one. */
 export const DEFAULT_MODE: CavemanMode = 'full'
@@ -144,13 +141,6 @@ export interface InstructionInput {
 }
 
 /**
- * Cache of built instruction blocks. The skill body is parsed once at load
- * and the level set is fixed, so at most seven entries ever exist; assembly
- * reads the same block every request instead of re-filtering lines.
- */
-const instructionCache = new Map<string, string>()
-
-/**
  * Build the exact text the system prompt carries for one level.
  * @param input - the active level and the skill body.
  * @returns the instruction block, or `''` when the level is `off`.
@@ -160,10 +150,5 @@ export function buildModeInstructions(input: InstructionInput): string {
   if (mode === 'off') return ''
 
   const effective = normalizeMode(mode) ?? DEFAULT_MODE
-  const cached = instructionCache.get(effective)
-  if (cached !== undefined) return cached
-
-  const built = `CAVEMAN MODE ACTIVE — level: ${effective}\n\n${filterSkillBodyForMode(input.skillBody, effective)}`
-  instructionCache.set(effective, built)
-  return built
+  return `CAVEMAN MODE ACTIVE — level: ${effective}\n\n${filterSkillBodyForMode(input.skillBody, effective)}`
 }

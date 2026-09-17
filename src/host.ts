@@ -3,13 +3,17 @@
  * structurally.
  *
  * The plugin is installed from outside the harness checkout. It depends on the
- * published `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-skill` packages, but
- * the services it reaches through `ctx.inject([...])` are declared structurally
- * here: the host types remain authoritative, and a composition that does not
- * mount a service simply omits that capability.
+ * published `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-skill` packages: the
+ * skill domain shapes (summaries, candidates, definitions, lookup options) are
+ * imported from the latter, while the services it reaches through
+ * `ctx.inject([...])` are declared structurally here: the host types remain
+ * authoritative, and a composition that does not mount a service simply omits
+ * that capability.
  *
  * @module dsh-caveman/host
  */
+
+import type { SkillCandidate, SkillDefinition, SkillLookupOptions } from '@deepseek-ai/dsh-skill'
 
 /** Disposer returned by every host registration. */
 export type Disposable = () => void
@@ -24,71 +28,19 @@ export interface PromptSectionContribution {
   readonly text: string | ((context: unknown) => string)
 }
 
-/** Invocation controls carried by every skill summary. */
-export interface SkillInvocationPolicyLike {
-  /** Whether model-facing catalogs and the `skill` tool include this skill. */
-  readonly modelInvocable: boolean
-  /** Whether human-facing command catalogs include this skill. */
-  readonly userInvocable: boolean
-}
-
-/** Invocation-neutral skill metadata. */
-export interface SkillSummaryLike {
-  /** Absolute instruction file path, when the provider has one. */
-  readonly path?: string
-  /** Kebab-case identifier. */
-  readonly name: string
-  /** Short routing description. */
-  readonly description: string
-  /** Optional extra routing guidance. */
-  readonly whenToUse?: string
-  /** Resolved invocation controls. */
-  readonly invocation: SkillInvocationPolicyLike
-  /** Discovery source bucket. */
-  readonly source: string
-  /** Owning provider name. */
-  readonly provider: string
-  /** Base for resources referenced by the loaded body. */
-  readonly resourceBase?: { readonly kind: 'directory'; readonly path: string }
-}
-
 /**
- * Per-lookup options the registry hands a provider.
- *
- * Only the cancellation half is read: packaged skills are workspace-independent,
- * so `cwd` cannot select anything here.
+ * The workspace-independent slice of the host's `SkillProvider` this plugin
+ * implements: flat candidate arrays, and lookup options that stay optional for
+ * direct callers. The packaged provider ignores `cwd` and never reports an
+ * incomplete observation.
  */
-export interface SkillLookupOptionsLike {
-  /** Aborts discovery or loading work for the current caller. */
-  readonly signal?: AbortSignal | undefined
-}
-
-/** Provider catalog entry the registry merges and later loads. */
-export interface SkillCandidateLike extends SkillSummaryLike {
-  /** Lower ranks win duplicate names before provider registration order. */
-  readonly rank: number
-  /** Opaque provider-owned handle passed back to `get()`. */
-  readonly locator: unknown
-  /** Parsed provider-specific frontmatter. */
-  readonly metadata?: Readonly<Record<string, unknown>>
-}
-
-/** Complete skill definition including the loaded body. */
-export interface SkillDefinitionLike extends SkillSummaryLike {
-  /** Instruction body after frontmatter removal. */
-  readonly content: string
-  /** Parsed provider-specific frontmatter. */
-  readonly metadata?: Readonly<Record<string, unknown>>
-}
-
-/** One source of skills. */
 export interface SkillProviderLike {
   /** Unique provider name in the registry. */
   readonly name: string
   /** List candidates for the current lookup, settling promptly on abort. */
-  list(options?: SkillLookupOptionsLike): Promise<readonly SkillCandidateLike[]>
+  list(options?: SkillLookupOptions): Promise<readonly SkillCandidate[]>
   /** Load a winning candidate's body, or `undefined` when it is gone. */
-  get(candidate: SkillCandidateLike, options?: SkillLookupOptionsLike): Promise<SkillDefinitionLike | undefined>
+  get(candidate: SkillCandidate, options?: SkillLookupOptions): Promise<SkillDefinition | undefined>
 }
 
 /** Model-facing content block. */

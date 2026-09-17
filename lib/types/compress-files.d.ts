@@ -1,6 +1,6 @@
 /**
- * File handling for the compress pipeline: frontmatter splitting, sensitive
- * path refusal, atomic writes, backups, locks, and source reading.
+ * File handling for the compress pipeline: sensitive path refusal, atomic
+ * writes, backups, and source reading.
  *
  * TypeScript port of the non-model parts of
  * `skills/caveman-compress/scripts/compress.py` (MIT, © JuliusBrussee).
@@ -16,13 +16,6 @@
  * and threads it through the pipeline; this is only the default.
  */
 export declare const MAX_FILE_SIZE = 500000;
-/**
- * Split YAML frontmatter from the body. Frontmatter is preserved verbatim
- * through compression; files without it pass through unchanged.
- * @param text - full file text.
- * @returns `[frontmatter, body]`.
- */
-export declare function splitFrontmatter(text: string): [string, string];
 /**
  * Heuristic denylist for files that must never be rewritten by a tool that
  * ships bytes to a model. Fail loudly rather than exfiltrate.
@@ -50,13 +43,6 @@ export declare function backupDirFor(filePath: string): string;
  */
 export declare function backupPathFor(filePath: string): string;
 /**
- * Lock path for a source file, derived from its backup path so the two can't
- * drift apart. Hashed to stay filesystem-safe.
- * @param filePath - absolute source path.
- * @returns the lock file path.
- */
-export declare function lockPathFor(filePath: string): string;
-/**
  * Write bytes atomically: sibling temp file, fsync, rename. Preserves the
  * destination's permission bits across the swap.
  * @param filePath - destination path.
@@ -83,13 +69,3 @@ export interface SourceFile {
  * @returns text (LF-normalized), terminator, and raw bytes for the backup.
  */
 export declare function readSource(filePath: string): SourceFile;
-/**
- * Best-effort cross-process lock: create the lock dir, refuse symlinks, and
- * run the callback. Unlike the Python original there is no blocking wait —
- * a held lock fails fast with a clear message instead of hanging a model
- * turn for up to 15 minutes.
- * @param filePath - absolute source path.
- * @param run - work to do under the lock.
- * @returns the callback's return.
- */
-export declare function withFileLock<T>(filePath: string, run: () => T): T;

@@ -45,6 +45,7 @@ test('patched files document their divergence', () => {
   assert.deepEqual([...manifest.patched].sort(), [
     'skills/cavecrew/SKILL.md',
     'skills/caveman-compress/SKILL.md',
+    'skills/caveman-help/SKILL.md',
     'skills/caveman-stats/SKILL.md',
     'skills/caveman/SKILL.md',
   ])
@@ -60,11 +61,13 @@ test('patched files document their divergence', () => {
   assert.match(cavecrew, /no named-agent registry/, 'cavecrew states its DSH adaptation')
   const stats = readFileSync(join(packageRoot, 'skills/caveman-stats/SKILL.md'), 'utf8')
   assert.match(stats, /tokenUsage/, 'stats states its DSH adaptation')
+  const help = readFileSync(join(packageRoot, 'skills/caveman-help/SKILL.md'), 'utf8')
+  assert.match(help, /profile row > env var/, 'help states the true default priority')
 })
 
-test('sync check reports the four known patched drifts and nothing else', () => {
+test('sync check reports the five known patched drifts and nothing else', () => {
   // Network-dependent: upstream main must be reachable. Asserts the exact
-  // steady state — 13 verbatim clean, 4 patched stale — so a newly drifted
+  // steady state — 12 verbatim clean, 5 patched stale — so a newly drifted
   // verbatim file fails loudly instead of rotting.
   let out: string
   try {
@@ -77,6 +80,7 @@ test('sync check reports the four known patched drifts and nothing else', () => 
   }
   assert.match(out, /stale \[patched\]: skills\/caveman\/SKILL\.md/)
   assert.match(out, /stale \[patched\]: skills\/caveman-compress\/SKILL\.md/)
+  assert.match(out, /stale \[patched\]: skills\/caveman-help\/SKILL\.md/)
   assert.match(out, /stale \[patched\]: skills\/cavecrew\/SKILL\.md/)
   assert.match(out, /stale \[patched\]: skills\/caveman-stats\/SKILL\.md/)
   assert.doesNotMatch(out, /\[verbatim\]/, 'no verbatim file drifted')

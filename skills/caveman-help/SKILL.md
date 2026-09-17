@@ -7,7 +7,7 @@ description: >
 
 # Caveman Help
 
-Display this reference card when invoked. One-shot — do NOT change mode, write flag files, or persist anything. Output in caveman style.
+Display this reference card when invoked. One-shot — do NOT change mode or persist anything. Output in caveman style.
 
 ## Modes
 
@@ -19,6 +19,7 @@ Display this reference card when invoked. One-shot — do NOT change mode, write
 | **Wenyan-Lite** | `/caveman wenyan-lite` | Classical Chinese style, light compression. |
 | **Wenyan-Full** | `/caveman wenyan` | Full 文言文. Maximum classical terseness. |
 | **Wenyan-Ultra** | `/caveman wenyan-ultra` | Extreme. Ancient scholar on a budget. |
+| **Off** | `/caveman off` | No injection. Normal behavior. |
 
 Mode stick until changed or session end.
 
@@ -28,8 +29,11 @@ Mode stick until changed or session end.
 |-------|---------|-----------|
 | **caveman-commit** | `/caveman-commit` | Terse commit messages. Conventional Commits. ≤50 char subject. |
 | **caveman-review** | `/caveman-review` | One-line PR comments: `L42: bug: user null. Add guard.` |
-| **caveman-compress** | `/caveman-compress <file>` | Compress .md files to caveman prose. Saves ~46% input tokens. |
+| **caveman-compress** | `/caveman-compress <file>` | Compress .md files with local rules. Backup kept out-of-tree. |
+| **caveman-stats** | `/caveman-stats` | Session token usage. Counts only, never savings. |
 | **caveman-help** | `/caveman-help` | This card. |
+
+Model tool also takes per-call `once` (unpersisted style) and `usage: true` (session totals).
 
 ## Deactivate
 
@@ -41,9 +45,11 @@ Keep user's language by default — reply in the language user writes, never swi
 
 ## Configure Default Mode
 
-Default mode = `full`. Change it:
+Default mode = `full`. Change it (lowest priority last):
 
-**Environment variable** (highest priority):
+**Profile row** (highest priority): `defaultMode` in `cordis.patch.yml`.
+
+**Environment variable**:
 ```bash
 export CAVEMAN_DEFAULT_MODE=ultra
 ```
@@ -55,7 +61,7 @@ export CAVEMAN_DEFAULT_MODE=ultra
 
 Set `"off"` to disable auto-activation on session start. User can still activate manually with `/caveman`.
 
-Resolution: env var > config file > `full`.
+Resolution: profile row > env var > config file > `full`.
 
 ## More
 

@@ -175,8 +175,8 @@ npm run sync        # overwrite stale verbatim files (refuses dirty tree w/o --f
 ## Upstream sync
 
 `sync.manifest.json` lists every file copied from
-[JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman): 13
-`verbatim` (byte-identical, safe to overwrite) and 4 `patched` (DSH-adapted,
+[JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman): 12
+`verbatim` (byte-identical, safe to overwrite) and 5 `patched` (DSH-adapted,
 never overwritten):
 
 - `skills/caveman/SKILL.md` — one added line steering concise reasoning
@@ -186,12 +186,14 @@ never overwritten):
 - `skills/cavecrew/SKILL.md` — added how to spawn via the `subagent` tool
   (DSH has no named-agent registry);
 - `skills/caveman-stats/SKILL.md` — rewired to this plugin's `usage` field
-  (upstream reads Claude Code hook files).
+  (upstream reads Claude Code hook files);
+- `skills/caveman-help/SKILL.md` — true default priority, `off`/`once`/`usage`
+  rows, no unmeasured savings claim (upstream predates this plugin's surface).
 
 `npm run sync:check` exits 1 listing stale files; `sync` rewrites verbatim
 ones and leaves patched ones for manual re-adaptation. Both accept
 `--ref <tag|sha>` to pin (default: `main`). `tests/sync.test.ts` asserts the
-steady state — 13 clean, 4 patched-stale — so new upstream drift fails loudly.
+steady state — 12 clean, 5 patched-stale — so new upstream drift fails loudly.
 
 ## Uninstall
 
@@ -229,8 +231,8 @@ and delete the `id: caveman` row from
 MIT. Skill content: © JuliusBrussee
 ([caveman](https://github.com/JuliusBrussee/caveman)). DSH port: see `LICENSE`.
 
-The fourteen `skills/*/SKILL.md` files track upstream; ten are verbatim
-copies, four carry small DSH adaptations (see Upstream sync). The
+The fourteen `skills/*/SKILL.md` files track upstream; nine are verbatim
+copies, five carry small DSH adaptations (see Upstream sync). The
 `cavecrew-*.md` prompts are verbatim too. The compress pipeline
 (`src/compress-*.ts`) is a port, not a copy: same behavior, local rules
 instead of a model call, no python3 needed.

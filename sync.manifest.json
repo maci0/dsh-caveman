@@ -4,7 +4,6 @@
   "verbatim": [
     "skills/caveman-commit/SKILL.md",
     "skills/caveman-review/SKILL.md",
-    "skills/caveman-help/SKILL.md",
     "skills/cavecrew/cavecrew-investigator.md",
     "skills/cavecrew/cavecrew-builder.md",
     "skills/cavecrew/cavecrew-reviewer.md",
@@ -17,9 +16,10 @@
     "skills/caveman-explore/SKILL.md"
   ],
   "patched": [
-    "skills/caveman/SKILL.md",
-    "skills/caveman-compress/SKILL.md",
     "skills/cavecrew/SKILL.md",
-    "skills/caveman-stats/SKILL.md"
+    "skills/caveman-compress/SKILL.md",
+    "skills/caveman-help/SKILL.md",
+    "skills/caveman-stats/SKILL.md",
+    "skills/caveman/SKILL.md"
   ]
 }

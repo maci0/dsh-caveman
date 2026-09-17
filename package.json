@@ -1,6 +1,6 @@
 {
   "name": "dsh-caveman",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
@@ -34,9 +34,8 @@
     }
   },
   "files": [
-    "lib/index.js",
+    "lib/**/*.js",
     "lib/types/**/*.d.ts",
-    "lib/client.js",
     "skills",
     "scripts/sync-upstream.mjs",
     "sync.manifest.json",

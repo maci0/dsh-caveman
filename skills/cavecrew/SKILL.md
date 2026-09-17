@@ -12,7 +12,7 @@ The full prompts live beside this skill as `cavecrew-<role>.md`. DSH has
 no named-agent registry — a child is spawned with an inline prompt — so to
 delegate, call the `subagent` tool with the role file's body as the prompt
 (it names its own output contract, refusal lines, and tool allow-list).
-Concretely: read `agents/cavecrew-investigator.md` (or `-builder`/`-reviewer`)
+Concretely: read `cavecrew-investigator.md` (or `-builder`/`-reviewer`)
 from this skill's directory, then invoke e.g.:
 
 > subagent(description="locate token expiry", prompt="< investigator body >\n\nTask: where is token expiry checked?")

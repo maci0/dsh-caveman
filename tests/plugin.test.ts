@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { apply, CAVEMAN_SETTINGS_NAMESPACE, readUpstreamConfigFile } from '../src/index.ts'
+import { apply, CAVEMAN_SETTINGS_NAMESPACE, Config, readUpstreamConfigFile } from '../src/index.ts'
+import type { Config as ConfigType } from '../src/index.ts'
 import type {
   CommandDefinitionLike,
   HostContext,
@@ -117,11 +118,11 @@ async function callTool(host: { captured: Captured }, args: unknown, exec?: Tool
   return tool.execute(args, exec)
 }
 
-async function callCompressTool(host: { captured: Captured }, args: unknown): Promise<unknown> {
+async function callCompressTool(host: { captured: Captured }, args: unknown, exec?: ToolExecLike): Promise<unknown> {
   const tool = host.captured.tools[1]
   assert.ok(tool)
   assert.equal(tool.name, 'caveman-compress')
-  return tool.execute(args)
+  return tool.execute(args, exec)
 }
 
 async function callCommand(host: { captured: Captured }, rawInput: string, index = 0) {
@@ -171,7 +172,12 @@ test('the tool persists a level through the settings document', async () => {
   assert.deepEqual(off, { mode: 'off', previous: 'ultra', changed: true, active: false })
   assert.equal(sectionText(host.captured.sections[0]), '')
 
-  await assert.rejects(() => callTool(host, { mode: 'shrug' }), /Unknown caveman level/)
+  // `defineTool` validates the declared enum before `execute` runs, so an
+  // unknown level reaches the model as a schema violation.
+  await assert.rejects(
+    () => callTool(host, { mode: 'shrug' }),
+    /invalid arguments: "mode" must be one of \["off","lite","full","ultra","wenyan-lite","wenyan-full","wenyan-ultra"\]/,
+  )
 })
 
 test('wenyan levels persist like every other level', async () => {
@@ -278,8 +284,16 @@ test('the tool answers a one-shot level without persisting it', async () => {
     mode: 'lite', previous: 'full', changed: true, active: true, once: 'ultra',
   })
 
-  await assert.rejects(() => callTool(host, { once: 'shrug' }), /Unknown caveman level/)
-  await assert.rejects(() => callTool(host, { once: 'off' }), /not a reply style/)
+  // Both invalid shapes are caught by the declared `once` enum (no `off`, and
+  // only the six levels).
+  await assert.rejects(
+    () => callTool(host, { once: 'shrug' }),
+    /invalid arguments: "once" must be one of \["lite","full","ultra","wenyan-lite","wenyan-full","wenyan-ultra"\]/,
+  )
+  await assert.rejects(
+    () => callTool(host, { once: 'off' }),
+    /invalid arguments: "once" must be one of \["lite","full","ultra","wenyan-lite","wenyan-full","wenyan-ultra"\]/,
+  )
 })
 
 test('the tool reports session usage only when asked and available', async () => {
@@ -293,10 +307,11 @@ test('the tool reports session usage only when asked and available', async () =>
     mode: 'full', previous: 'full', changed: false, active: true,
   })
 
-  // With a projections service, usage rides the exec's session.
+  // With a projections service, usage rides the exec's session. The unit's own
+  // bucket names are the ones the token-meter projection publishes.
   const session = { id: 's1' }
   const exec = { agent: { session } }
-  const totals = { input: 100, output: 40, cacheRead: 500, cacheWrite: 10 }
+  const totals = { uncachedInputTokens: 100, outputTokens: 40, cacheReadTokens: 500, cacheWriteTokens: 10 }
   const projectionsHost = createProjectionsHost(totals)
   apply(projectionsHost.ctx, { defaultMode: 'full' })
   const using = projectionsHost.captured.tools[0]
@@ -324,7 +339,12 @@ test('the tool reports session usage only when asked and available', async () =>
 })
 
 /** A host variant whose scope also carries a stub `sessionProjections` service. */
-function createProjectionsHost(totals: { input: number; output: number; cacheRead: number; cacheWrite: number }): {
+function createProjectionsHost(totals: {
+  uncachedInputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+}): {
   ctx: HostContext
   captured: Captured
 } {
@@ -376,7 +396,70 @@ test('readUpstreamConfigFile tolerates a missing or broken file', async () => {
 
 test('apply fails loudly on configuration it cannot honor', () => {
   const host = createHost()
-  assert.throws(() => apply(host.ctx, { defaultMode: 'review' }), /defaultMode must be one of off, lite, full, ultra, wenyan-lite, wenyan-full, wenyan-ultra/)
+  // The exported schema rejects this while the row loads; `apply` owns the same
+  // check for a caller that bypasses the loader.
+  const invalid = { defaultMode: 'review' } as unknown as ConfigType
+  assert.throws(() => apply(host.ctx, invalid), /defaultMode must be one of off, lite, full, ultra, wenyan-lite, wenyan-full, wenyan-ultra/)
+
+  // The size cap is a tunable, not a constant: the schema validates the type,
+  // and `apply` rejects a value that is unusable as a byte cap.
+  assert.throws(() => apply(host.ctx, { maxFileSize: 0 }), /maxFileSize must be a positive number of bytes/)
+  assert.throws(() => apply(host.ctx, { maxFileSize: Number.NaN }), /maxFileSize must be a positive number of bytes/)
+})
+
+test('an absent defaultMode resolves through the documented chain', () => {
+  const host = createHost()
+  // The row schema declares no default, so the field stays absent and the
+  // resolution chain still gets its turn. A schema default would have filled
+  // `full` here and silently outranked both remaining sources.
+  assert.deepEqual(Config({}), { maxFileSize: 500000 })
+
+  const previous = process.env['CAVEMAN_DEFAULT_MODE']
+  process.env['CAVEMAN_DEFAULT_MODE'] = 'wenyan-lite'
+  try {
+    apply(host.ctx, {})
+    assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: wenyan-lite\n\n/)
+  } finally {
+    if (previous === undefined) delete process.env['CAVEMAN_DEFAULT_MODE']
+    else process.env['CAVEMAN_DEFAULT_MODE'] = previous
+  }
+})
+
+test('an aborted tool call bails out before it persists', async () => {
+  const host = createHost()
+  apply(host.ctx, { defaultMode: 'full' })
+
+  await assert.rejects(
+    () => callTool(host, { mode: 'ultra' }, { signal: AbortSignal.abort() }),
+    /abort/i,
+  )
+  assert.deepEqual(host.captured.updates, [])
+  assert.match(sectionText(host.captured.sections[0]), /level: full/)
+
+  await assert.rejects(
+    () => callCompressTool(host, { filepath: 'notes.md' }, { signal: AbortSignal.abort() }),
+    /abort/i,
+  )
+})
+
+test('the configured maxFileSize caps the compress tool', async () => {
+  const { mkdtemp, rm, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+
+  const host = createHost()
+  apply(host.ctx, { defaultMode: 'full', maxFileSize: 20 })
+
+  const root = await mkdtemp(join(tmpdir(), 'caveman-maxsize-'))
+  try {
+    const target = join(root, 'notes.md')
+    await writeFile(target, '# Notes\n\nYou should always make sure to run the tests before you push anything.\n')
+    const outcome = await callCompressTool(host, { filepath: target }) as Record<string, unknown>
+    assert.equal(outcome['ok'], false)
+    assert.match(String(outcome['reason']), /File too large to compress safely \(max 20 bytes\)/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 /** Let the fire-and-forget settings write settle. */
@@ -475,7 +558,8 @@ test('compress tool and command run the pipeline and honor the backup dir', asyn
     await rm(root, { recursive: true, force: true })
   }
 
-  await assert.rejects(() => callCompressTool(host, {}), /needs a filepath string/)
+  await assert.rejects(() => callCompressTool(host, {}), /invalid arguments: missing required property "filepath"/)
+  await assert.rejects(() => callCompressTool(host, { filepath: '' }), /needs a filepath string/)
   assert.deepEqual(await callCommand(host, '', 1), {
     kind: 'error', text: 'Usage: /caveman-compress <filepath>',
   })

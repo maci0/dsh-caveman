@@ -1,10 +1,13 @@
-# Row to paste into ~/.dsh/profiles/<profile>/cordis.patch.yml.
-# That file is live-watched; dsh.profile.bundles is frozen at boot.
+# The dsh-caveman bundle patch: applied automatically when a profile lists
+# this bundle (`dsh plugin add`/`update` appends the package to
+# dsh.profile.bundles). Users override this row from their profile's own
+# cordis.patch.yml (live-watched; dsh.profile.bundles is frozen at boot) with a
+# `- id: caveman` row, which replaces the row's whole `config`.
 # `name` stays a bare package specifier — the browser half is served by the
 # client module system, which resolves the Loader entry's package, reads its
 # `dsh.client` manifest, and serves `exports["./client"]`.
-# Do not also list this package in dsh.profile.bundles: insert does not
-# dedupe ids, two rows would register the plugin twice.
+# Do not also insert this same row into the profile patch: insert does not
+# dedupe ids, and a second row would register the plugin twice.
 - insert:
     - id: caveman
       name: 'dsh-caveman'

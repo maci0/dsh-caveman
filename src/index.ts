@@ -27,6 +27,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 import {
   buildModeInstructions,
   DEFAULT_MODE,
@@ -40,7 +41,7 @@ import {
 } from './modes.ts'
 import { createSkillProvider } from './skills.ts'
 import { compressFile } from './compress-pipeline.ts'
-import { setBackupRootOverride } from './compress-files.ts'
+import { MAX_FILE_SIZE, setBackupRootOverride } from './compress-files.ts'
 import { parseFrontmatter } from './frontmatter.ts'
 import type {
   CommandInvocationLike,
@@ -50,7 +51,6 @@ import type {
   SessionMessageLike,
   SessionProjectionsLike,
   SettingsServiceLike,
-  ToolDefinitionLike,
   ToolExecLike,
 } from './host.ts'
 
@@ -73,16 +73,26 @@ export const CavemanSettings = z.object({
 /**
  * Configuration accepted from this plugin's row in a profile patch.
  *
- * No Schemastery `Config` schema is exported: the loader would require a
- * Standard Schema for it, and this plugin validates its own row instead so the
- * loader never has to. The runtime import of `@deepseek-ai/schemastery` is for
- * {@link CavemanSettings}, whose `toJSON()` the settings service serializes
- * for browser-side rehydration.
+ * The exported schema is what Cordis validates the row against before `apply`
+ * runs. It deliberately declares no default for `defaultMode`: a schema default
+ * would fill the field before `apply`, which would silently outrank
+ * `CAVEMAN_DEFAULT_MODE` and `~/.config/caveman/config.json`. Absence flows to
+ * `resolveDefaultMode`, which owns the documented chain, and `apply` still
+ * validates `defaultMode` itself so a caller that bypasses the loader cannot
+ * mount a bad level.
  */
 export interface Config {
-  /** Startup level. Defaults to `CAVEMAN_DEFAULT_MODE`, then `full`. */
-  readonly defaultMode?: string
+  /** Startup level. Absent resolves through the chain, ending at `full`. */
+  readonly defaultMode?: CavemanMode
+  /** Size cap in bytes for `/caveman-compress`; defaults to 500000. */
+  readonly maxFileSize?: number
 }
+
+/** Row schema: the accepted levels and the size cap live here. */
+export const Config: z<Config> = z.object({
+  defaultMode: z.union([...RUNTIME_MODES]),
+  maxFileSize: z.number().default(MAX_FILE_SIZE),
+})
 
 /** Upstream config file, read the way upstream reads it. */
 const UPSTREAM_CONFIG_PATH = join(homedir(), '.config', 'caveman', 'config.json')
@@ -126,6 +136,12 @@ export function apply(ctx: HostContext, config: Config = {}): void {
       `[caveman] defaultMode must be one of ${RUNTIME_MODES.join(', ')}; got ${JSON.stringify(config.defaultMode)}`,
     )
   }
+  const maxFileSize = config.maxFileSize ?? MAX_FILE_SIZE
+  if (!Number.isFinite(maxFileSize) || maxFileSize <= 0) {
+    throw new Error(
+      `[caveman] maxFileSize must be a positive number of bytes; got ${JSON.stringify(config.maxFileSize)}`,
+    )
+  }
 
   // `<package>/skills`, resolved from this module's own location.
   const skillsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills')
@@ -166,23 +182,33 @@ export function apply(ctx: HostContext, config: Config = {}): void {
 
   const activeMode = (): CavemanMode => override ?? configuredMode() ?? startup
 
-  /** Persist a level through the settings document; false when it cannot hold it. */
-  const persist = async (next: CavemanMode): Promise<boolean> => {
+  /**
+   * Persist a level through the settings document; false when it cannot hold it.
+   * @param next - the level to write.
+   * @param signal - cancels the write when the calling tool was cancelled.
+   */
+  const persist = async (next: CavemanMode, signal?: AbortSignal): Promise<boolean> => {
     if (settings === undefined || normalizeMode(next) === undefined) return false
+    signal?.throwIfAborted()
+    let persisted: boolean
     try {
       await settings.update(CAVEMAN_SETTINGS_NAMESPACE, { mode: next })
-      return true
+      persisted = true
     } catch (error) {
       warn(`could not persist level "${next}": ${error instanceof Error ? error.message : String(error)}`)
-      return false
+      persisted = false
     }
+    // Outside the try: an abort is not a persistence failure to be swallowed.
+    signal?.throwIfAborted()
+    return persisted
   }
 
   const setMode = async (
     next: CavemanMode,
+    signal?: AbortSignal,
   ): Promise<{ previous: CavemanMode; mode: CavemanMode; changed: boolean }> => {
     const previous = activeMode()
-    override = (await persist(next)) ? undefined : next
+    override = (await persist(next, signal)) ? undefined : next
     const mode = activeMode()
     return { previous, mode, changed: mode !== previous }
   }
@@ -245,7 +271,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
 
   ctx.inject(['tools'], (scope) => {
     scope.tools.register(createModeTool(activeMode, setMode, (exec) => readSessionUsage(scope, exec)))
-    scope.tools.register(createCompressTool(syncBackupDir))
+    scope.tools.register(createCompressTool(syncBackupDir, maxFileSize))
   })
 
   ctx.inject(['commands'], (scope) => {
@@ -259,7 +285,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
       name: 'caveman-compress',
       description: '🗜 Compress a memory file with local rules (backup kept).',
       input: { hint: '<filepath>' },
-      handler: async (invocation) => handleCompressCommand(invocation, syncBackupDir),
+      handler: async (invocation) => handleCompressCommand(invocation, syncBackupDir, maxFileSize),
     })
   })
 
@@ -323,11 +349,12 @@ function readSessionUsage(
   }
   const totals = state?.totals
   if (totals === undefined) return undefined
+  // The unit's own bucket names, mapped to this plugin's labels.
   return {
-    input: totals.input ?? 0,
-    output: totals.output ?? 0,
-    cacheRead: totals.cacheRead ?? 0,
-    cacheWrite: totals.cacheWrite ?? 0,
+    input: totals.uncachedInputTokens ?? 0,
+    output: totals.outputTokens ?? 0,
+    cacheRead: totals.cacheReadTokens ?? 0,
+    cacheWrite: totals.cacheWriteTokens ?? 0,
   }
 }
 
@@ -336,14 +363,17 @@ function readSessionUsage(
  * @param getMode - reads the active level.
  * @param setMode - applies and persists a level.
  * @param getUsage - reads this session's provider-reported usage, when available.
- * @returns the raw tool definition.
+ * @returns the registered tool definition.
  */
 function createModeTool(
   getMode: () => CavemanMode,
-  setMode: (next: CavemanMode) => Promise<{ previous: CavemanMode; mode: CavemanMode; changed: boolean }>,
+  setMode: (
+    next: CavemanMode,
+    signal?: AbortSignal,
+  ) => Promise<{ previous: CavemanMode; mode: CavemanMode; changed: boolean }>,
   getUsage?: (exec: ToolExecLike | undefined) => SessionUsage | undefined,
-): ToolDefinitionLike {
-  return {
+) {
+  return defineTool({
     name: 'caveman',
     // The `enum` below already names every level, and the injected ruleset
     // explains what each one does; repeating both here only costs tokens.
@@ -353,56 +383,52 @@ function createModeTool(
       + 'Call with no arguments to report the current level. '
       + 'A per-call `mode` applies to this call only and is not persisted.',
     parameters: {
-      type: 'object',
-      properties: {
-        mode: {
-          type: 'string',
-          enum: [...VALID_MODES],
-          description: 'Level to activate and persist. Omit to report the current level.',
-        },
-        once: {
-          type: 'string',
-          enum: [...VALID_MODES.filter((mode) => mode !== 'off')],
-          description: 'Level for this call only. Not persisted; `mode` wins when both are given.',
-        },
-        usage: {
-          type: 'boolean',
-          description: 'Include this session’s provider-reported token totals (input, output, cache read/write). Never a saving.',
-        },
+      mode: {
+        type: 'string',
+        enum: [...VALID_MODES],
+        description: 'Level to activate and persist. Omit to report the current level.',
       },
-      additionalProperties: false,
+      once: {
+        type: 'string',
+        enum: [...VALID_MODES.filter((mode) => mode !== 'off')],
+        description: 'Level for this call only. Not persisted; `mode` wins when both are given.',
+      },
+      usage: {
+        type: 'boolean',
+        description: 'Include this session’s provider-reported token totals (input, output, cache read/write). Never a saving.',
+      },
     },
     output: {
       schema: {
         type: 'object',
+        additionalProperties: false,
         properties: {
-          mode: { type: 'string', enum: [...VALID_MODES] },
-          previous: { type: 'string', enum: [...VALID_MODES] },
-          changed: { type: 'boolean' },
-          active: { type: 'boolean' },
+          mode: { type: 'string', enum: [...VALID_MODES], required: true },
+          previous: { type: 'string', enum: [...VALID_MODES], required: true },
+          changed: { type: 'boolean', required: true },
+          active: { type: 'boolean', required: true },
           once: { type: 'string', enum: [...VALID_MODES.filter((mode) => mode !== 'off')] },
           usage: {
             type: 'object',
-            properties: {
-              input: { type: 'number' },
-              output: { type: 'number' },
-              cacheRead: { type: 'number' },
-              cacheWrite: { type: 'number' },
-            },
-            required: ['input', 'output', 'cacheRead', 'cacheWrite'],
             additionalProperties: false,
+            properties: {
+              input: { type: 'number', required: true },
+              output: { type: 'number', required: true },
+              cacheRead: { type: 'number', required: true },
+              cacheWrite: { type: 'number', required: true },
+            },
           },
         },
-        required: ['mode', 'previous', 'changed', 'active'],
-        additionalProperties: false,
       },
       render: (_args, value) => [{ type: 'text', text: renderModeResult(value) }],
     },
     async execute(args, exec) {
-      const requested = readModeArgument(args)
-      const once = readOnceArgument(args)
+      // A cancelled call must not start, and must not persist a level it can
+      // no longer report.
+      exec?.signal?.throwIfAborted()
+      const once = args.once
       const previous = getMode()
-      if (requested === undefined) {
+      if (args.mode === undefined) {
         return {
           mode: once ?? previous,
           previous,
@@ -413,7 +439,7 @@ function createModeTool(
         }
       }
 
-      const applied = await setMode(requested)
+      const applied = await setMode(args.mode, exec?.signal)
       return {
         mode: applied.mode,
         previous: applied.previous,
@@ -423,7 +449,7 @@ function createModeTool(
         ...usageField(args, exec, getUsage),
       }
     },
-  }
+  })
 }
 
 /** This session's provider-reported usage, or `undefined` when unavailable. */
@@ -455,53 +481,50 @@ function usageField(
  * Build the model-facing compress tool. Local deterministic rules only —
  * no model call, no bytes leave the machine.
  * @param syncBackupDir - applies the backup-dir override before each run.
- * @returns the raw tool definition.
+ * @param maxFileSize - configured size cap in bytes.
+ * @returns the registered tool definition.
  */
-function createCompressTool(syncBackupDir: () => void): ToolDefinitionLike {
-  return {
+function createCompressTool(syncBackupDir: () => void, maxFileSize: number) {
+  return defineTool({
     name: 'caveman-compress',
     description:
       'Compress a natural-language file (memory file, todo list) with local '
       + 'caveman rules. Code, URLs, paths, and headings are preserved; the '
       + 'original is backed up out-of-tree.',
     parameters: {
-      type: 'object',
-      properties: {
-        filepath: {
-          type: 'string',
-          description: 'Absolute path of the file to compress.',
-        },
+      filepath: {
+        type: 'string',
+        required: true,
+        description: 'Absolute path of the file to compress.',
       },
-      required: ['filepath'],
-      additionalProperties: false,
     },
     output: {
       schema: {
         type: 'object',
+        additionalProperties: false,
         properties: {
-          ok: { type: 'boolean' },
+          ok: { type: 'boolean', required: true },
           reason: { type: 'string' },
           backupPath: { type: 'string' },
           originalChars: { type: 'number' },
           compressedChars: { type: 'number' },
         },
-        required: ['ok'],
-        additionalProperties: false,
       },
       render: (_args, value) => [{ type: 'text', text: renderCompressResult(value) }],
     },
-    async execute(args) {
-      if (args === null || typeof args !== 'object') {
-        throw new Error('caveman-compress needs a filepath string.')
-      }
-      const filepath = (args as Record<string, unknown>)['filepath']
-      if (typeof filepath !== 'string' || filepath.trim() === '') {
+    async execute(args, exec) {
+      exec?.signal?.throwIfAborted()
+      // The schema owns the type; an empty path is the one shape it cannot see.
+      if (args.filepath.trim() === '') {
         throw new Error('caveman-compress needs a filepath string.')
       }
       syncBackupDir()
-      return compressFile(filepath)
+      const outcome = compressFile(args.filepath, maxFileSize)
+      // The write is atomic but not free; a cancelled call must not claim it.
+      exec?.signal?.throwIfAborted()
+      return outcome
     },
-  }
+  })
 }
 
 /**
@@ -519,52 +542,6 @@ function renderCompressResult(value: unknown): string {
   const before = typeof record['originalChars'] === 'number' ? record['originalChars'] : 0
   const after = typeof record['compressedChars'] === 'number' ? record['compressedChars'] : 0
   return `Compressed ${before} to ${after} chars. Original backed up at ${backup}.`
-}
-
-/**
- * Read the optional `mode` argument, validating it because raw definitions own
- * their input validation.
- * @param args - losslessly snapshotted model arguments.
- * @returns the requested level, or `undefined` for a status query.
- */
-function readModeArgument(args: unknown): CavemanMode | undefined {
-  if (args === null || typeof args !== 'object') return undefined
-
-  const raw = (args as Record<string, unknown>)['mode']
-  if (raw === undefined || raw === null || raw === '') return undefined
-
-  const mode = normalizeMode(raw)
-  if (mode === undefined) {
-    throw new Error(
-      `Unknown caveman level ${JSON.stringify(raw)}. Use one of: ${VALID_MODES.join(', ')}.`,
-    )
-  }
-  return mode
-}
-
-/**
- * Read the optional per-call `once` argument. It applies to the reply being
- * composed only and is never persisted — upstream's stateless `/caveman <mode>`
- * prefix behavior, without a flag file.
- * @param args - losslessly snapshotted model arguments.
- * @returns the one-shot level, or `undefined` when not asked.
- */
-function readOnceArgument(args: unknown): CavemanMode | undefined {
-  if (args === null || typeof args !== 'object') return undefined
-
-  const raw = (args as Record<string, unknown>)['once']
-  if (raw === undefined || raw === null || raw === '') return undefined
-
-  const once = normalizeMode(raw)
-  if (once === undefined) {
-    throw new Error(
-      `Unknown caveman level ${JSON.stringify(raw)}. Use one of: ${VALID_MODES.filter((mode) => mode !== 'off').join(', ')}.`,
-    )
-  }
-  if (once === 'off') {
-    throw new Error('`once: "off"` is not a reply style; omit `once` or pick a level.')
-  }
-  return once
 }
 
 /**
@@ -644,13 +621,14 @@ async function handleModeCommand(
 async function handleCompressCommand(
   invocation: CommandInvocationLike,
   syncBackupDir: () => void,
+  maxFileSize: number,
 ): Promise<CommandResultLike> {
   const filepath = invocation.rawInput.trim()
   if (filepath === '') {
     return { kind: 'error', text: 'Usage: /caveman-compress <filepath>' }
   }
   syncBackupDir()
-  const outcome = compressFile(filepath)
+  const outcome = compressFile(filepath, maxFileSize)
   if (!outcome.ok) return { kind: 'error', text: outcome.reason }
   return {
     kind: 'success',

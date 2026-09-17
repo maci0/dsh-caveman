@@ -169,6 +169,11 @@ test('the card binds the caveman namespace and registers into the plugins tab', 
   assert.equal(registered.length, 2)
   assert.equal(registered[0]?.entry['name'], 'settings.plugin.item')
   assert.equal(registered[0]?.entry['key'], 'caveman')
+  // The documented keyed-card fields: `locale` names the namespace this card's
+  // copy comes from. `inject` stays absent because the card closes over its own
+  // bound scope and takes no injected props.
+  assert.equal(registered[0]?.entry['locale'], 'caveman')
+  assert.equal('inject' in (registered[0]?.entry ?? {}), false)
   assert.equal(registered[1]?.entry['name'], 'conversation.input.left')
   assert.equal(registered[1]?.entry['id'], 'caveman-level')
 })

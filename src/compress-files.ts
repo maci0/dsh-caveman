@@ -16,7 +16,11 @@ import { createHash, randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
-/** Refuse anything over this size before touching it. */
+/**
+ * Packaged default for the `maxFileSize` cap (500000 bytes, ~500 KB), used when
+ * the plugin row does not override it. `apply` validates the configured value
+ * and threads it through the pipeline; this is only the default.
+ */
 export const MAX_FILE_SIZE = 500_000
 
 const FRONTMATTER_REGEX = /^(---\r?\n.*?\r?\n---\r?\n)(.*)/s

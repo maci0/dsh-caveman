@@ -1,16 +1,27 @@
 {
   "name": "dsh-caveman",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
   "description": "Caveman terse-talk mode, for DeepSeek Harness: bundled skills, an always-on compression ruleset, and a Plugin configuration card.",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts",
-    "./client": "./lib/client.js",
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [
@@ -23,8 +34,9 @@
     }
   },
   "files": [
-    "src",
-    "lib",
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "lib/client.js",
     "skills",
     "scripts/sync-upstream.mjs",
     "sync.manifest.json",
@@ -33,16 +45,23 @@
     "LICENSE"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "test": "node --test tests/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "sync:check": "node scripts/sync-upstream.mjs check",
     "sync": "node scripts/sync-upstream.mjs sync"
   },
   "engines": {
-    "node": ">=22.6.0"
+    "node": "^22.19.0 || >=24.0.0"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "3.18.2"
+    "@deepseek-ai/dsh-llm": "0.1.6-alpha.1",
+    "@deepseek-ai/dsh-sandbox": "0.1.6-alpha.1",
+    "@deepseek-ai/dsh-scope": "0.1.6-alpha.1",
+    "@deepseek-ai/dsh-skill": "0.1.6-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.1.6-alpha.1",
+    "@deepseek-ai/schemastery": "3.18.2",
+    "yaml": "2.9.1"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-client-connection": "*",
@@ -52,6 +71,7 @@
     "@deepseek-ai/dsh-client-ui-settings-plugins": "*"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
     "@types/node": "^22.20.2",
     "typescript": "^7.0.2"
   }

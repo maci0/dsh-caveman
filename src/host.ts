@@ -2,12 +2,11 @@
  * The slice of the DeepSeek Harness host surface this plugin uses, declared
  * structurally.
  *
- * The plugin is installed from outside the harness checkout, so it cannot
- * resolve `@deepseek-ai/*` packages from its own directory and deliberately
- * carries no runtime dependency on them. These interfaces describe the exact
- * contracts the plugin calls; the host types remain authoritative. Every
- * service is reached through `ctx.inject([...])`, so a composition that does
- * not mount one simply omits that capability.
+ * The plugin is installed from outside the harness checkout. It depends on the
+ * published `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-skill` packages, but
+ * the services it reaches through `ctx.inject([...])` are declared structurally
+ * here: the host types remain authoritative, and a composition that does not
+ * mount a service simply omits that capability.
  *
  * @module dsh-caveman/host
  */
@@ -41,6 +40,8 @@ export interface SkillSummaryLike {
   readonly name: string
   /** Short routing description. */
   readonly description: string
+  /** Optional extra routing guidance. */
+  readonly whenToUse?: string
   /** Resolved invocation controls. */
   readonly invocation: SkillInvocationPolicyLike
   /** Discovery source bucket. */
@@ -49,6 +50,17 @@ export interface SkillSummaryLike {
   readonly provider: string
   /** Base for resources referenced by the loaded body. */
   readonly resourceBase?: { readonly kind: 'directory'; readonly path: string }
+}
+
+/**
+ * Per-lookup options the registry hands a provider.
+ *
+ * Only the cancellation half is read: packaged skills are workspace-independent,
+ * so `cwd` cannot select anything here.
+ */
+export interface SkillLookupOptionsLike {
+  /** Aborts discovery or loading work for the current caller. */
+  readonly signal?: AbortSignal | undefined
 }
 
 /** Provider catalog entry the registry merges and later loads. */
@@ -73,24 +85,24 @@ export interface SkillDefinitionLike extends SkillSummaryLike {
 export interface SkillProviderLike {
   /** Unique provider name in the registry. */
   readonly name: string
-  /** List candidates for the current lookup. */
-  list(): Promise<readonly SkillCandidateLike[]>
+  /** List candidates for the current lookup, settling promptly on abort. */
+  list(options?: SkillLookupOptionsLike): Promise<readonly SkillCandidateLike[]>
   /** Load a winning candidate's body, or `undefined` when it is gone. */
-  get(candidate: SkillCandidateLike): Promise<SkillDefinitionLike | undefined>
+  get(candidate: SkillCandidateLike, options?: SkillLookupOptionsLike): Promise<SkillDefinitionLike | undefined>
 }
 
 /** Model-facing content block. */
 export interface ContentBlockLike {
-  /** Only text rendering is produced by this plugin. */
-  readonly type: 'text'
-  /** Rendered text. */
-  readonly text: string
+  /** Block discriminator; this plugin only ever produces `text`. */
+  readonly type: string
+  /** Rendered text, present on the text blocks this plugin returns. */
+  readonly text?: string
 }
 
 /** Canonical output declaration of a registered tool. */
 export interface ToolOutputLike {
   /** Raw JSON Schema enforced against the canonical value. */
-  readonly schema: Record<string, unknown>
+  readonly schema: object
   /** Pure projection from arguments and value to model-facing content. */
   render(args: unknown, value: unknown): ContentBlockLike[]
 }
@@ -118,16 +130,18 @@ export interface ToolDefinitionLike {
 export interface ToolExecLike {
   /** The agent on whose behalf the call runs. */
   readonly agent?: { readonly session?: unknown } | undefined
+  /** Caller-owned cancellation for this invocation. */
+  readonly signal?: AbortSignal | undefined
 }
 
 /** One session-projection unit state. */
 export interface ProjectionStateLike {
-  /** Cumulative provider-reported token buckets. */
+  /** Cumulative provider-reported token buckets, named as the unit names them. */
   readonly totals?: {
-    readonly input?: number
-    readonly output?: number
-    readonly cacheRead?: number
-    readonly cacheWrite?: number
+    readonly uncachedInputTokens?: number
+    readonly outputTokens?: number
+    readonly cacheReadTokens?: number
+    readonly cacheWriteTokens?: number
   } | undefined
 }
 

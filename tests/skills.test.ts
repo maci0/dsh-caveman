@@ -4,8 +4,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { BUNDLED_SKILL_RANK } from '@deepseek-ai/dsh-skill'
 import { parseFrontmatter } from '../src/frontmatter.ts'
-import { createSkillProvider, discoverSkills, BUNDLED_SKILL_RANK } from '../src/skills.ts'
+import { createSkillProvider, discoverSkills } from '../src/skills.ts'
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const skillsDir = join(packageRoot, 'skills')
@@ -29,7 +30,9 @@ test('parseFrontmatter folds block descriptions and keeps the body', () => {
   )
 
   assert.equal(parsed.data['name'], 'caveman')
-  assert.equal(parsed.data['description'], 'First line of the description continues on the next line.')
+  // YAML clip chomping keeps the final line break of a folded scalar; the
+  // skill reader trims every projected string before it reaches a summary.
+  assert.equal(parsed.data['description'], 'First line of the description continues on the next line.\n')
   assert.equal(parsed.data['argument-hint'], '[lite|full|ultra]')
   assert.equal(parsed.data['license'], 'MIT')
   assert.equal(parsed.body, '\n# Caveman\n\nBody text.')
@@ -45,22 +48,54 @@ test('parseFrontmatter reads quoted scalars and leaves a bodyless file alone', (
   assert.equal(none.body, '# just markdown\n')
 })
 
-test('parseFrontmatter refuses a block scalar it does not read', () => {
-  assert.throws(
-    () => parseFrontmatter('---\nname: x\ndescription: |\n  one\n  two\n---\nbody\n'),
-    /unsupported block scalar indicator "\|"/,
+test('parseFrontmatter reads literal and chomped block scalars and nested maps', () => {
+  const parsed = parseFrontmatter(
+    [
+      '---',
+      'name: nested',
+      'description: |-',
+      '  one',
+      '  two',
+      'whenToUse: >-',
+      '  Use when the task needs a nested map.',
+      'metadata:',
+      '  owner: caveman',
+      '  flags:',
+      '    - a',
+      '    - b',
+      'disable-model-invocation: true',
+      'user-invocable: false',
+      '---',
+      'body',
+    ].join('\n'),
   )
-  assert.throws(
-    () => parseFrontmatter('---\nname: x\ndescription: >-\n  one\n---\nbody\n'),
-    /unsupported block scalar indicator ">-"/,
-  )
+
+  assert.equal(parsed.data['description'], 'one\ntwo')
+  assert.equal(parsed.data['whenToUse'], 'Use when the task needs a nested map.')
+  assert.deepEqual(parsed.data['metadata'], { owner: 'caveman', flags: ['a', 'b'] })
+  assert.equal(parsed.data['disable-model-invocation'], true)
+  assert.equal(parsed.data['user-invocable'], false)
+  assert.equal(parsed.body, 'body')
+})
+
+test('parseFrontmatter tolerates a missing or non-mapping block and lets YAML errors escape', () => {
+  const bare = parseFrontmatter('---\nnot a mapping\n---\nbody\n')
+  assert.deepEqual(bare.data, {})
+  assert.equal(bare.body, 'body\n')
+
+  const unclosed = parseFrontmatter('---\nname: x\nbody\n')
+  assert.deepEqual(unclosed.data, {})
+  assert.equal(unclosed.body, '---\nname: x\nbody\n')
+
+  assert.throws(() => parseFrontmatter('---\nname: x\ndescription: "unterminated\n---\nbody\n'))
 })
 
 test('discoverSkills skips a file the reader refuses and keeps the rest', async () => {
   const root = await mkdtemp(join(tmpdir(), 'caveman-skills-'))
   try {
     await mkdir(join(root, 'broken'), { recursive: true })
-    await writeFile(join(root, 'broken', 'SKILL.md'), '---\nname: broken\ndescription: |\n  literal\n---\nbody\n')
+    // Malformed YAML: the reader throws, discovery warns and keeps going.
+    await writeFile(join(root, 'broken', 'SKILL.md'), '---\nname: broken\ndescription: "unterminated\n---\nbody\n')
     await mkdir(join(root, 'fine'), { recursive: true })
     await writeFile(join(root, 'fine', 'SKILL.md'), '---\nname: fine\ndescription: >\n  A usable description.\n---\nbody\n')
 
@@ -69,7 +104,7 @@ test('discoverSkills skips a file the reader refuses and keeps the rest', async 
 
     assert.deepEqual(skills.map((skill) => skill.name), ['fine'])
     assert.equal(warnings.length, 1)
-    assert.match(warnings[0] ?? '', /unsupported block scalar indicator/)
+    assert.match(warnings[0] ?? '', /skipping .*broken/)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -156,4 +191,67 @@ test('the provider lists candidates and loads their bodies', async () => {
 
   const stale = await provider.get({ ...review, name: 'other-skill' })
   assert.equal(stale, undefined)
+})
+
+/** Write one skill directory and return its root. */
+async function writeSkill(frontmatter: readonly string[]): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'caveman-invocation-'))
+  await mkdir(join(root, 'probe'), { recursive: true })
+  await writeFile(join(root, 'probe', 'SKILL.md'), ['---', ...frontmatter, '---', 'body'].join('\n'))
+  return root
+}
+
+test('the provider projects the two canonical invocation keys and whenToUse', async () => {
+  const root = await writeSkill([
+    'name: probe',
+    'description: A probe skill.',
+    'whenToUse: Use when probing the invocation policy.',
+    'disable-model-invocation: true',
+    'user-invocable: false',
+    'license: MIT',
+  ])
+  try {
+    const provider = createSkillProvider({ skillsDir: root })
+    const candidates = await provider.list()
+    assert.equal(candidates.length, 1)
+
+    const probe = candidates[0]
+    assert.ok(probe)
+    assert.deepEqual(probe.invocation, { modelInvocable: false, userInvocable: false })
+    assert.equal(probe.whenToUse, 'Use when probing the invocation policy.')
+    // Only provider-specific keys survive; the projected ones are not repeated.
+    assert.deepEqual(probe.metadata, { license: 'MIT' })
+
+    // The body keeps the same policy and guidance.
+    const definition = await provider.get(probe)
+    assert.ok(definition)
+    assert.deepEqual(definition.invocation, { modelInvocable: false, userInvocable: false })
+    assert.equal(definition.whenToUse, 'Use when probing the invocation policy.')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('omitted invocation keys default to model- and user-invocable', async () => {
+  const root = await writeSkill(['name: probe', 'description: A probe skill.'])
+  try {
+    const candidates = await createSkillProvider({ skillsDir: root }).list()
+    assert.deepEqual(candidates[0]?.invocation, { modelInvocable: true, userInvocable: true })
+    assert.equal(candidates[0]?.whenToUse, undefined)
+    assert.deepEqual(candidates[0]?.metadata, {})
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('the provider settles promptly when the lookup signal is aborted', async () => {
+  const provider = createSkillProvider({ skillsDir })
+  const aborted = AbortSignal.abort()
+
+  await assert.rejects(() => provider.list({ signal: aborted }), /aborted/i)
+
+  const candidates = await provider.list()
+  const first = candidates[0]
+  assert.ok(first)
+  await assert.rejects(() => provider.get(first, { signal: aborted }), /aborted/i)
 })

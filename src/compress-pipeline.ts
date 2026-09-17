@@ -29,9 +29,10 @@ export type CompressOutcome =
 /**
  * Compress one file in place, keeping an out-of-tree backup.
  * @param inputPath - file to compress (resolved before locking).
+ * @param maxFileSize - configured size cap in bytes; defaults to the packaged 500000.
  * @returns the outcome; the file is untouched unless `ok` is true.
  */
-export function compressFile(inputPath: string): CompressOutcome {
+export function compressFile(inputPath: string, maxFileSize: number = MAX_FILE_SIZE): CompressOutcome {
   const filePath = resolve(inputPath)
 
   let stat: ReturnType<typeof statSync>
@@ -41,8 +42,8 @@ export function compressFile(inputPath: string): CompressOutcome {
     return { ok: false, reason: `File not found: ${filePath}` }
   }
   if (!stat.isFile()) return { ok: false, reason: `Not a file: ${filePath}` }
-  if (stat.size > MAX_FILE_SIZE) {
-    return { ok: false, reason: `File too large to compress safely (max ${MAX_FILE_SIZE} bytes): ${filePath}` }
+  if (stat.size > maxFileSize) {
+    return { ok: false, reason: `File too large to compress safely (max ${maxFileSize} bytes): ${filePath}` }
   }
   if (isSensitivePath(filePath)) {
     return {

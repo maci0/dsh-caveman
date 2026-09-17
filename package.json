@@ -1,6 +1,6 @@
 {
   "name": "dsh-caveman",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "type": "module",
   "description": "Caveman terse-talk mode, for DeepSeek Harness: bundled skills, an always-on compression ruleset, and a Plugin configuration card.",

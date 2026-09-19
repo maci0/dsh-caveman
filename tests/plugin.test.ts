@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { apply, CAVEMAN_SETTINGS_NAMESPACE, Config, readUpstreamConfigFile } from '../src/index.ts'
+import { apply, Config, readUpstreamConfigFile } from '../src/index.ts'
 import type { Config as ConfigType } from '../src/index.ts'
 import type {
   CommandDefinitionLike,
@@ -12,6 +12,8 @@ import type {
 } from '../src/host.ts'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+
+const CAVEMAN_SETTINGS_NAMESPACE = 'caveman'
 
 interface InstallRecord {
   readonly namespace: string

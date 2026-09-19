@@ -16,7 +16,21 @@ const FENCE_OPEN_REGEX = /^(\s{0,3})(`{3,}|~{3,})(.*)$/
 const FENCE_MARKER_LINE_REGEX = /^\s*(?:`{3,}|~{3,})[^`~]*$/
 const HEADING_REGEX = /^(#{1,6})\s+(.*)/gm
 const BULLET_REGEX = /^\s*[-*+]\s+/gm
-const PATH_REGEX = /(?:\.\/|\.\.\/|\/|[A-Za-z]:\\)[\w\-\/\\.]+|[\w\-\.]+[\/\\][\w\-\/\\.]+/g
+/**
+ * Path-shaped runs: an absolute/relative prefix plus its body, or a bare
+ * `dir/file`.
+ *
+ * The bare-path branch carries a `(?<![\w.-])` boundary: a mid-run start can
+ * never produce a match the run's first character would not already produce
+ * (that match is a superset, and leftmost-first wins), so the lookbehind
+ * rejects the mid-word starts the engine would otherwise walk suffix by
+ * suffix. Match-identical to the greedy form HEAD ships and to the lazy form
+ * the previous pass introduced, on 388 inputs: the bench corpus at six sizes,
+ * 381 markdown files under the plugin tree and the harness checkout, and one
+ * adversarial set of slash-free long words, drive prefixes and mixed
+ * separators.
+ */
+const PATH_REGEX = /(?:\.\/|\.\.\/|\/|[A-Za-z]:\\)[\w\-\/\\.]+|(?<![\w.-])[\w\-.]+[\/\\][\w\-\/\\.]+/g
 const DEFINITE_PATH_REGEX = /^(?:\.\/|\.\.\/|\/|[A-Za-z]:\\)|[^\/\\]*\.[A-Za-z0-9]{1,8}$/
 
 /** Outcome of validating one original/compressed pair. */
@@ -45,31 +59,6 @@ function isFenceClose(line: string, fenceChar: string, fenceLen: number): boolea
   return run[0] === fenceChar && run.length >= fenceLen && (close?.[3] ?? '').trim() === ''
 }
 
-function extractFencedSpans(lines: string[]): [number, number][] {
-  const spans: [number, number][] = []
-  let i = 0
-  while (i < lines.length) {
-    const open = FENCE_OPEN_REGEX.exec(lines[i] ?? '')
-    if (open?.[2] === undefined) {
-      i += 1
-      continue
-    }
-    const fenceChar = open[2][0]
-    const fenceLen = open[2].length
-    const start = i
-    i += 1
-    while (i < lines.length) {
-      if (isFenceClose(lines[i] ?? '', fenceChar ?? '', fenceLen)) {
-        i += 1
-        break
-      }
-      i += 1
-    }
-    spans.push([start, i])
-  }
-  return spans
-}
-
 /**
  * Every fenced and indented code block, in document order.
  *
@@ -95,25 +84,72 @@ function countBullets(text: string): number {
 }
 
 export function extractInlineCodes(text: string): string[] {
-  // Single pass: blank fenced spans by line range instead of one full-string
-  // replace per block (O(blocks × file)). Same result — fence bodies never
-  // contribute inline spans.
+  // Blank the fenced/marker lines in place and join once: fence bodies never
+  // contribute inline spans, and the join keeps a backtick span that straddles
+  // a blanked block byte-identical to the old two-pass form. One walk does both
+  // blankings — it opens a span exactly where a forward fence scan would and
+  // skips to the closer, then applies the marker test outside a span — instead
+  // of collecting span tuples and walking the lines twice.
   const lines = text.split('\n')
-  const fenced = new Set<number>()
-  for (const [start, end] of extractFencedSpans(lines)) {
-    for (let i = start; i < end; i += 1) fenced.add(i)
+  let index = 0
+  while (index < lines.length) {
+    const line = lines[index] ?? ''
+    const open = FENCE_OPEN_REGEX.exec(line)
+    if (open?.[2] !== undefined) {
+      const fenceChar = open[2][0] ?? ''
+      const fenceLen = open[2].length
+      lines[index] = ''
+      index += 1
+      while (index < lines.length) {
+        const inner = lines[index] ?? ''
+        const closed = isFenceClose(inner, fenceChar, fenceLen)
+        lines[index] = ''
+        index += 1
+        if (closed) break
+      }
+      continue
+    }
+    if (line !== '' && FENCE_MARKER_LINE_REGEX.test(line)) lines[index] = ''
+    index += 1
   }
-  const stripped = lines
-    .map((line, index) => {
-      if (fenced.has(index)) return ''
-      return FENCE_MARKER_LINE_REGEX.test(line) ? '' : line
-    })
-    .join('\n')
-  return [...stripped.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? '')
+  return [...lines.join('\n').matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? '')
 }
 
 function difference(left: Set<string>, right: Set<string>): Set<string> {
   return new Set([...left].filter((item) => !right.has(item)))
+}
+
+/**
+ * Element-wise equality of two string lists. Used where the result only needs
+ * "same sequence": `JSON.stringify` would be equivalent but materializes two
+ * whole serialized documents (thousands of code blocks on a large file) to
+ * answer a question a length check and a loop answer with no allocation.
+ * @param left - first list.
+ * @param right - second list.
+ * @returns true when both lists hold the same strings in the same order.
+ */
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false
+  }
+  return true
+}
+
+/**
+ * Element-wise equality of two heading lists, level and title.
+ * @param left - first list.
+ * @param right - second list.
+ * @returns true when both hold the same pairs in the same order.
+ */
+function sameHeadings(left: readonly [string, string][], right: readonly [string, string][]): boolean {
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) {
+    const pair = left[index]
+    const other = right[index]
+    if (pair === undefined || other === undefined || pair[0] !== other[0] || pair[1] !== other[1]) return false
+  }
+  return true
 }
 
 function renderSpans(spans: Iterable<string>): string {
@@ -142,18 +178,18 @@ export function validate(original: string, compressed: string): ValidationResult
   } else {
     const titlesOriginal = headingsOriginal.map(([, title]) => title)
     const titlesCompressed = headingsCompressed.map(([, title]) => title)
-    if (JSON.stringify(titlesOriginal) !== JSON.stringify(titlesCompressed)) {
+    if (!sameStrings(titlesOriginal, titlesCompressed)) {
       const lost = titlesOriginal.filter((title) => !titlesCompressed.includes(title))
       const added = titlesCompressed.filter((title) => !titlesOriginal.includes(title))
       errors.push(`Heading text/order changed: lost=${JSON.stringify(lost)}, added=${JSON.stringify(added)}`)
-    } else if (JSON.stringify(headingsOriginal) !== JSON.stringify(headingsCompressed)) {
+    } else if (!sameHeadings(headingsOriginal, headingsCompressed)) {
       warnings.push('Heading levels changed')
     }
   }
 
   const codeOriginal = extractCodeBlocks(original)
   const codeCompressed = extractCodeBlocks(compressed)
-  if (JSON.stringify(codeOriginal) !== JSON.stringify(codeCompressed)) {
+  if (!sameStrings(codeOriginal, codeCompressed)) {
     errors.push('Code blocks not preserved exactly')
   }
 

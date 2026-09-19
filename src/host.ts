@@ -17,7 +17,7 @@ import type { SkillCandidate, SkillDefinition, SkillLookupOptions } from '@deeps
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 /** Disposer returned by every host registration. */
-export type Disposable = () => void
+type Disposable = () => void
 
 /** One contributed system-prompt section. */
 export interface PromptSectionContribution {

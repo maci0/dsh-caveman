@@ -66,7 +66,7 @@ export function normalizeCommandMode(input: string): CavemanMode | undefined {
 }
 
 /** Inputs for {@link resolveDefaultMode}, all injectable for tests. */
-export interface DefaultModeSources {
+interface DefaultModeSources {
   /** Deployment default from this plugin's config field; wins over everything. */
   readonly configured?: string | undefined
   /** Environment lookup; defaults to `process.env`. */
@@ -133,7 +133,7 @@ export function filterSkillBodyForMode(body: string, mode: CavemanMode): string 
 }
 
 /** Inputs for {@link buildModeInstructions}. */
-export interface InstructionInput {
+interface InstructionInput {
   /** Active level. */
   readonly mode: CavemanMode
   /** `skills/caveman/SKILL.md` body with its frontmatter already removed. */

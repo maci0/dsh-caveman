@@ -27,18 +27,6 @@ import type { HostContext } from './host.ts';
 /** Plugin name as it appears in the loader. */
 export declare const name = "caveman";
 /**
- * Settings namespace the browser card edits — the join key between this host
- * half and `lib/client.js`. The card registers into `settings.plugin.item`
- * under the same key, and the tab pairs the two without knowing what it means.
- */
-export declare const CAVEMAN_SETTINGS_NAMESPACE = "caveman";
-/** Persisted configuration. Every caveman level persists; there is no session-only level. */
-export declare const CavemanSettings: z<Schemastery.ObjectS<{
-    mode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra">;
-}>, Schemastery.ObjectT<{
-    mode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra">;
-}>>;
-/**
  * Configuration accepted from this plugin's row in a profile patch.
  *
  * The exported schema is what Cordis validates the row against before `apply`

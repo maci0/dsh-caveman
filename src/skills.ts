@@ -18,7 +18,8 @@ import type {
   SkillLookupOptions,
   SkillSummary,
 } from '@deepseek-ai/dsh-skill'
-import { parseFrontmatter } from './frontmatter.ts'
+import { parseFrontmatterAsync } from './frontmatter.ts'
+import type { Frontmatter } from './frontmatter.ts'
 import type { SkillProviderLike } from './host.ts'
 
 /** Provider name inside the skill registry. */
@@ -93,9 +94,9 @@ async function readSkillFile(
     return undefined
   }
 
-  let parsed: ReturnType<typeof parseFrontmatter>
+  let parsed: Frontmatter
   try {
-    parsed = parseFrontmatter(source)
+    parsed = await parseFrontmatterAsync(source)
   } catch (error) {
     onWarn?.(`skipping ${path}: ${error instanceof Error ? error.message : String(error)}`)
     return undefined

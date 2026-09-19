@@ -18,6 +18,13 @@
  */
 /**
  * Mask fenced and indented code blocks with opaque markers.
+ *
+ * The output is assembled from the *gaps between* blocks instead of one string
+ * per line: a document with no code returns the input string itself, and a
+ * document with three blocks pushes a handful of segments rather than tens of
+ * thousands of line references and then joins them all. The result is
+ * identical — each segment is a run of whole lines and the join puts the same
+ * `\n` separators back.
  * @param text - markdown body.
  * @returns masked text plus the blocks for restoration.
  */

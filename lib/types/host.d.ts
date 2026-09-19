@@ -15,7 +15,7 @@
 import type { SkillCandidate, SkillDefinition, SkillLookupOptions } from '@deepseek-ai/dsh-skill';
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
 /** Disposer returned by every host registration. */
-export type Disposable = () => void;
+type Disposable = () => void;
 /** One contributed system-prompt section. */
 export interface PromptSectionContribution {
     /** Unique section name across the composition. */
@@ -165,3 +165,4 @@ export interface SettingsServiceLike {
      */
     update(namespace: string, patch: Record<string, unknown>): Promise<void>;
 }
+export {};

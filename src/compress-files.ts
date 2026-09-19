@@ -54,27 +54,14 @@ function backupsBaseDir(): string {
   return join(base, 'caveman-compress', 'backups')
 }
 
-/** Override root for backups, set from the `compressBackupDir` setting. Empty = platform default. */
-let backupRootOverride = ''
-
-/**
- * Set the backup root override. Empty string restores the platform default.
- * @param dir - override directory, or empty.
- */
-export function setBackupRootOverride(dir: string): void {
-  backupRootOverride = dir
-}
-
 /**
  * Out-of-tree backup dir for a file, keyed by its parent dir name — kept
  * outside the source tree so skill auto-loaders don't re-ingest backups.
- * Honors the override when set.
  * @param filePath - absolute source path.
  * @returns the backup directory.
  */
 export function backupDirFor(filePath: string): string {
-  const root = backupRootOverride !== '' ? backupRootOverride : backupsBaseDir()
-  return join(root, basename(dirname(filePath)))
+  return join(backupsBaseDir(), basename(dirname(filePath)))
 }
 
 /**

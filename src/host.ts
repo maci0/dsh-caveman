@@ -14,6 +14,7 @@
  */
 
 import type { SkillCandidate, SkillDefinition, SkillLookupOptions } from '@deepseek-ai/dsh-skill'
+import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 /** Disposer returned by every host registration. */
 export type Disposable = () => void
@@ -41,41 +42,6 @@ export interface SkillProviderLike {
   list(options?: SkillLookupOptions): Promise<readonly SkillCandidate[]>
   /** Load a winning candidate's body, or `undefined` when it is gone. */
   get(candidate: SkillCandidate, options?: SkillLookupOptions): Promise<SkillDefinition | undefined>
-}
-
-/** Model-facing content block. */
-export interface ContentBlockLike {
-  /** Block discriminator; this plugin only ever produces `text`. */
-  readonly type: string
-  /** Rendered text, present on the text blocks this plugin returns. */
-  readonly text?: string
-}
-
-/** Canonical output declaration of a registered tool. */
-export interface ToolOutputLike {
-  /** Raw JSON Schema enforced against the canonical value. */
-  readonly schema: object
-  /** Pure projection from arguments and value to model-facing content. */
-  render(args: unknown, value: unknown): ContentBlockLike[]
-}
-
-/** A registered tool: schema plus body. */
-export interface ToolDefinitionLike {
-  /** Model-facing tool name. */
-  readonly name: string
-  /** Model-facing purpose. */
-  readonly description: string
-  /** Raw JSON Schema of the arguments. */
-  readonly parameters: Record<string, unknown>
-  /** Canonical output declaration. */
-  readonly output: ToolOutputLike
-  /**
-   * Run one accepted call; the raw definition owns its input validation.
-   *
-   * The harness passes the execution context (carrying the calling agent and
-   * its session) as the second argument.
-   */
-  execute(args: unknown, exec?: ToolExecLike): Promise<unknown>
 }
 
 /** The slice of a tool execution context this plugin reads. */
@@ -169,7 +135,7 @@ export interface HostContext {
     registerProvider(create: () => SkillProviderLike): Disposable
   }
   readonly tools: {
-    register(definition: ToolDefinitionLike): Disposable
+    register(definition: ToolDefinition): Disposable
   }
   readonly commands: {
     register(definition: CommandDefinitionLike): Disposable

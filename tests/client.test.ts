@@ -245,25 +245,6 @@ test('expanding reveals one radio per persisted level and writes the chosen one'
   assert.deepEqual(calls.set, [['mode', 'wenyan-ultra']])
 })
 
-test('the backup-dir input writes its own field and leaves the level alone', () => {
-  const { calls, component, open, react } = openCard(
-    { status: 'ready', value: { mode: 'full', compressBackupDir: '' }, user: {}, writable: true },
-  )
-
-  assertLevels(open, 'Full')
-
-  const inputs = open.filter((element) => element.type === 'input')
-  assert.equal(inputs.length, 1)
-  assert.equal(inputs[0]?.props['placeholder'], 'Backup dir (empty = default)')
-  ;(inputs[0]?.props['onChange'] as (event: unknown) => void)({ target: { value: 'vault' } })
-  react.reset()
-  const input = walk(component()).filter((element) => element.type === 'input')[0]
-  assert.ok(input)
-  assert.equal(input.props['value'], 'vault')
-  ;(input.props['onBlur'] as () => void)()
-  assert.deepEqual(calls.set, [['compressBackupDir', 'vault']])
-})
-
 test('an overridden level is called out and offers a reset', () => {
   const { calls, open } = openCard({ status: 'ready', value: { mode: 'ultra' }, user: { mode: 'ultra' }, writable: true })
 

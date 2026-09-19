@@ -9,9 +9,9 @@ import type {
   SessionEventLike,
   SettingsSectionHooksLike,
   SkillProviderLike,
-  ToolDefinitionLike,
-  ToolExecLike,
 } from '../src/host.ts'
+import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 interface InstallRecord {
   readonly namespace: string
@@ -23,7 +23,7 @@ interface InstallRecord {
 interface Captured {
   readonly sections: PromptSectionContribution[]
   readonly providers: SkillProviderLike[]
-  readonly tools: ToolDefinitionLike[]
+  readonly tools: ToolDefinition[]
   readonly commands: CommandDefinitionLike[]
   readonly installs: InstallRecord[]
   readonly updates: { namespace: string; patch: Record<string, unknown> }[]
@@ -55,7 +55,7 @@ function createHost(options: { failUpdate?: boolean } = {}): {
       },
     },
     tools: {
-      register: (tool: ToolDefinitionLike): (() => void) => {
+      register: (tool: ToolDefinition): (() => void) => {
         captured.tools.push(tool)
         return () => {}
       },
@@ -112,17 +112,19 @@ function sectionText(section: PromptSectionContribution | undefined): string {
   return typeof section.text === 'function' ? section.text({}) : section.text
 }
 
-async function callTool(host: { captured: Captured }, args: unknown, exec?: ToolExecLike): Promise<unknown> {
+async function callTool(host: { captured: Captured }, args: unknown, exec?: ToolRunContext): Promise<unknown> {
   const tool = host.captured.tools[0]
   assert.ok(tool)
-  return tool.execute(args, exec)
+  // Only the slice the tool bodies read is supplied; the rest of the execution
+  // identity (call id, deferral hooks) is the registry's business.
+  return tool.execute(args, (exec ?? { agent: undefined }) as ToolRunContext)
 }
 
-async function callCompressTool(host: { captured: Captured }, args: unknown, exec?: ToolExecLike): Promise<unknown> {
+async function callCompressTool(host: { captured: Captured }, args: unknown, exec?: ToolRunContext): Promise<unknown> {
   const tool = host.captured.tools[1]
   assert.ok(tool)
   assert.equal(tool.name, 'caveman-compress')
-  return tool.execute(args, exec)
+  return tool.execute(args, (exec ?? { agent: undefined }) as ToolRunContext)
 }
 
 async function callCommand(host: { captured: Captured }, rawInput: string, index = 0) {
@@ -147,7 +149,7 @@ test('apply mounts the section, provider, tool, command, and settings namespace'
   const install = host.captured.installs[0]
   assert.ok(install)
   assert.equal(install.namespace, CAVEMAN_SETTINGS_NAMESPACE)
-  assert.deepEqual(install.entry, { mode: 'full', compressBackupDir: '' })
+  assert.deepEqual(install.entry, { mode: 'full' })
   // The settings service serializes `schema.toJSON()` for the browser half, so
   // the namespace must carry a real schemastery schema.
   assert.equal(typeof (install.schema as { toJSON?: unknown }).toJSON, 'function')
@@ -251,12 +253,12 @@ test('the tool renders its canonical value for the model', async () => {
   const tool = host.captured.tools[0]
   assert.ok(tool)
 
-  const value = await tool.execute({ mode: 'full' })
-  assert.deepEqual(tool.output.render({ mode: 'full' }, value), [
+  const value = await tool.execute({ mode: 'full' }, {} as ToolRunContext)
+  assert.deepEqual(tool.output.render({ mode: 'full' } as JsonValue, value as JsonValue), [
     { type: 'text', text: 'Caveman level: full (was lite). The ruleset is injected into every request.' },
   ])
 
-  assert.deepEqual(tool.output.render({}, { mode: 'off', previous: 'full', changed: true, active: false }), [
+  assert.deepEqual(tool.output.render({} as JsonValue, { mode: 'off', previous: 'full', changed: true, active: false } as JsonValue), [
     { type: 'text', text: 'Caveman off (was full). Normal behavior.' },
   ])
 })
@@ -310,7 +312,7 @@ test('the tool reports session usage only when asked and available', async () =>
   // With a projections service, usage rides the exec's session. The unit's own
   // bucket names are the ones the token-meter projection publishes.
   const session = { id: 's1' }
-  const exec = { agent: { session } }
+  const exec = { agent: { session } } as ToolRunContext
   const totals = { uncachedInputTokens: 100, outputTokens: 40, cacheReadTokens: 500, cacheWriteTokens: 10 }
   const projectionsHost = createProjectionsHost(totals)
   apply(projectionsHost.ctx, { defaultMode: 'full' })
@@ -326,7 +328,7 @@ test('the tool reports session usage only when asked and available', async () =>
     mode: 'full', previous: 'full', changed: false, active: true,
   })
   // No exec (no session): no usage field.
-  assert.deepEqual(await using.execute({ usage: true }), {
+  assert.deepEqual(await using.execute({ usage: true }, {} as ToolRunContext), {
     mode: 'full', previous: 'full', changed: false, active: true,
   })
 
@@ -430,14 +432,14 @@ test('an aborted tool call bails out before it persists', async () => {
   apply(host.ctx, { defaultMode: 'full' })
 
   await assert.rejects(
-    () => callTool(host, { mode: 'ultra' }, { signal: AbortSignal.abort() }),
+    () => callTool(host, { mode: 'ultra' }, { signal: AbortSignal.abort() } as ToolRunContext),
     /abort/i,
   )
   assert.deepEqual(host.captured.updates, [])
   assert.match(sectionText(host.captured.sections[0]), /level: full/)
 
   await assert.rejects(
-    () => callCompressTool(host, { filepath: 'notes.md' }, { signal: AbortSignal.abort() }),
+    () => callCompressTool(host, { filepath: 'notes.md' }, { signal: AbortSignal.abort() } as ToolRunContext),
     /abort/i,
   )
 })
@@ -531,7 +533,7 @@ test('an already-off level is not written again', async () => {
   assert.deepEqual(host.captured.updates, [])
 })
 
-test('compress tool and command run the pipeline and honor the backup dir', async () => {
+test('compress tool and command run the pipeline', async () => {
   const { mkdtemp, rm, writeFile, readFile } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
@@ -563,28 +565,4 @@ test('compress tool and command run the pipeline and honor the backup dir', asyn
   assert.deepEqual(await callCommand(host, '', 1), {
     kind: 'error', text: 'Usage: /caveman-compress <filepath>',
   })
-})
-
-test('backup dir override routes backups through settings', async () => {
-  const { mkdtemp, rm, writeFile } = await import('node:fs/promises')
-  const { tmpdir } = await import('node:os')
-  const { join } = await import('node:path')
-
-  const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
-  host.captured.installs[0]?.hooks.setSource(() => ({ mode: 'full', compressBackupDir: 'vault-dir' }))
-  host.captured.installs[0]?.hooks.onChange()
-
-  const root = await mkdtemp(join(tmpdir(), 'caveman-backupdir-'))
-  const cwd = process.cwd()
-  try {
-    process.chdir(root)
-    await writeFile('note.md', '# N\n\nYou should always test thoroughly.\n')
-    const outcome = await callCompressTool(host, { filepath: 'note.md' }) as Record<string, unknown>
-    assert.equal(outcome['ok'], true)
-    assert.match(String(outcome['backupPath']), /vault-dir/)
-  } finally {
-    process.chdir(cwd)
-    await rm(root, { recursive: true, force: true })
-  }
 })

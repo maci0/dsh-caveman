@@ -35,10 +35,8 @@ export declare const CAVEMAN_SETTINGS_NAMESPACE = "caveman";
 /** Persisted configuration. Every caveman level persists; there is no session-only level. */
 export declare const CavemanSettings: z<Schemastery.ObjectS<{
     mode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra">;
-    compressBackupDir: z<string, string>;
 }>, Schemastery.ObjectT<{
     mode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra">;
-    compressBackupDir: z<string, string>;
 }>>;
 /**
  * Configuration accepted from this plugin's row in a profile patch.

@@ -24,14 +24,8 @@ export declare const MAX_FILE_SIZE = 500000;
  */
 export declare function isSensitivePath(filePath: string): boolean;
 /**
- * Set the backup root override. Empty string restores the platform default.
- * @param dir - override directory, or empty.
- */
-export declare function setBackupRootOverride(dir: string): void;
-/**
  * Out-of-tree backup dir for a file, keyed by its parent dir name — kept
  * outside the source tree so skill auto-loaders don't re-ingest backups.
- * Honors the override when set.
  * @param filePath - absolute source path.
  * @returns the backup directory.
  */

@@ -7,7 +7,7 @@ import { detectFileType } from '../src/compress-detect.ts'
 import { parseFrontmatter } from '../src/frontmatter.ts'
 import { extractCodeBlocks, extractHeadings, extractInlineCodes, extractPaths, extractUrls, validate } from '../src/compress-validate.ts'
 import { compressBody, compressLine, isSmaller, maskCodeBlocks, restoreCodeBlocks } from '../src/compress-rules.ts'
-import { backupPathFor, isSensitivePath, setBackupRootOverride, writeTextAtomic } from '../src/compress-files.ts'
+import { backupPathFor, isSensitivePath, writeTextAtomic } from '../src/compress-files.ts'
 import { compressFile } from '../src/compress-pipeline.ts'
 
 test('detectFileType classifies by extension, name, and content', () => {
@@ -144,24 +144,6 @@ test('compressFile end-to-end: compresses, backs up, refuses twice', async () =>
 
     assert.match((compressFile(join(root, 'missing.md')) as { reason: string }).reason, /not found/)
   } finally {
-    await rm(root, { recursive: true, force: true })
-  }
-})
-
-test('backup dir override is honored and resettable', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'caveman-backupdir-'))
-  try {
-    const target = join(root, 'note.md')
-    await writeFile(target, '# N\n\nYou should always test the big function thoroughly.\n')
-    setBackupRootOverride(join(root, 'vault'))
-    const outcome = compressFile(target)
-    assert.equal(outcome.ok, true)
-    if (!outcome.ok) return
-    assert.match(outcome.backupPath, /vault/)
-    const second = compressFile(target)
-    assert.match((second as { reason: string }).reason, /Backup already exists/)
-  } finally {
-    setBackupRootOverride('')
     await rm(root, { recursive: true, force: true })
   }
 })

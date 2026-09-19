@@ -10,7 +10,7 @@
 import type { SkillInvocationPolicy } from '@deepseek-ai/dsh-skill';
 import type { SkillProviderLike } from './host.ts';
 /** One parsed bundled skill. */
-export interface CavemanSkill {
+interface CavemanSkill {
     /** Kebab-case skill name from frontmatter, or the directory name. */
     readonly name: string;
     /** Routing description from frontmatter. */
@@ -29,21 +29,12 @@ export interface CavemanSkill {
     readonly directory: string;
 }
 /** Options for {@link createSkillProvider}. */
-export interface SkillProviderOptions {
+interface SkillProviderOptions {
     /** Directory holding one subdirectory per skill. */
     readonly skillsDir: string;
     /** Receives non-fatal discovery problems instead of throwing. */
     readonly onWarn?: (message: string) => void;
 }
-/**
- * Read and parse one skill file. Shared by discovery and direct loads so a
- * single file enforces the name/description/frontmatter rules everywhere.
- * @param path - absolute path of the `SKILL.md` file.
- * @param onWarn - optional non-fatal problem sink.
- * @param entryName - directory name fallback when frontmatter omits `name`.
- * @returns the parsed skill, or `undefined` with a warning when invalid.
- */
-export declare function readSkillFile(path: string, onWarn?: (message: string) => void, entryName?: string): Promise<CavemanSkill | undefined>;
 /**
  * Read every valid skill directory under `skillsDir`.
  *
@@ -62,3 +53,4 @@ export declare function discoverSkills(skillsDir: string, onWarn?: (message: str
  * @returns a provider whose candidates are summaries and whose bodies come from disk.
  */
 export declare function createSkillProvider(options: SkillProviderOptions): SkillProviderLike;
+export {};

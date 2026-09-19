@@ -40,7 +40,7 @@ import {
 } from './modes.ts'
 import { createSkillProvider } from './skills.ts'
 import { compressFile } from './compress-pipeline.ts'
-import { MAX_FILE_SIZE, setBackupRootOverride } from './compress-files.ts'
+import { MAX_FILE_SIZE } from './compress-files.ts'
 import { parseFrontmatter } from './frontmatter.ts'
 import type {
   CommandInvocationLike,
@@ -75,7 +75,6 @@ const ONCE_MODES = RUNTIME_MODES.filter((mode) => mode !== 'off')
 /** Persisted configuration. Every caveman level persists; there is no session-only level. */
 export const CavemanSettings = z.object({
   mode: ModeSchema.default(DEFAULT_MODE),
-  compressBackupDir: z.string().default(''),
 })
 
 /**
@@ -179,15 +178,6 @@ export function apply(ctx: HostContext, config: Config = {}): void {
     return normalizeMode((value as { mode?: unknown }).mode)
   }
 
-  /** Sync the backup-dir override from settings before each compress run. */
-  const syncBackupDir = (): void => {
-    const value = source()
-    const dir = value !== null && typeof value === 'object'
-      ? (value as { compressBackupDir?: unknown }).compressBackupDir
-      : undefined
-    setBackupRootOverride(typeof dir === 'string' ? dir : '')
-  }
-
   const activeMode = (): CavemanMode => override ?? configuredMode() ?? startup
 
   /**
@@ -246,7 +236,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
       ctx,
       CAVEMAN_SETTINGS_NAMESPACE,
       CavemanSettings,
-      { mode: startup, compressBackupDir: '' },
+      { mode: startup },
       {
         setSource: (current) => {
           source = current
@@ -279,7 +269,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
 
   ctx.inject(['tools'], (scope) => {
     scope.tools.register(createModeTool(activeMode, setMode, (exec) => readSessionUsage(scope, exec)))
-    scope.tools.register(createCompressTool(syncBackupDir, maxFileSize))
+    scope.tools.register(createCompressTool(maxFileSize))
   })
 
   ctx.inject(['commands'], (scope) => {
@@ -293,7 +283,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
       name: 'caveman-compress',
       description: '🗜 Compress a memory file with local rules (backup kept).',
       input: { hint: '<filepath>' },
-      handler: async (invocation) => handleCompressCommand(invocation, syncBackupDir, maxFileSize),
+      handler: async (invocation) => handleCompressCommand(invocation, maxFileSize),
     })
   })
 
@@ -488,11 +478,10 @@ function usageField(
 /**
  * Build the model-facing compress tool. Local deterministic rules only —
  * no model call, no bytes leave the machine.
- * @param syncBackupDir - applies the backup-dir override before each run.
  * @param maxFileSize - configured size cap in bytes.
  * @returns the registered tool definition.
  */
-function createCompressTool(syncBackupDir: () => void, maxFileSize: number) {
+function createCompressTool(maxFileSize: number) {
   return defineTool({
     name: 'caveman-compress',
     description:
@@ -526,7 +515,6 @@ function createCompressTool(syncBackupDir: () => void, maxFileSize: number) {
       if (args.filepath.trim() === '') {
         throw new Error('caveman-compress needs a filepath string.')
       }
-      syncBackupDir()
       const outcome = compressFile(args.filepath, maxFileSize)
       // The write is atomic but not free; a cancelled call must not claim it.
       exec?.signal?.throwIfAborted()
@@ -635,19 +623,16 @@ async function handleModeCommand(
 /**
  * Handle the human `/caveman-compress <filepath>` command.
  * @param invocation - the command invocation.
- * @param syncBackupDir - applies the backup-dir override before each run.
  * @returns the direct-UI result.
  */
 async function handleCompressCommand(
   invocation: CommandInvocationLike,
-  syncBackupDir: () => void,
   maxFileSize: number,
 ): Promise<CommandResultLike> {
   const filepath = invocation.rawInput.trim()
   if (filepath === '') {
     return { kind: 'error', text: 'Usage: /caveman-compress <filepath>' }
   }
-  syncBackupDir()
   const outcome = compressFile(filepath, maxFileSize)
   if (!outcome.ok) return { kind: 'error', text: outcome.reason }
   return {

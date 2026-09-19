@@ -41,7 +41,7 @@ const PROJECTED_KEYS = new Set([
 ])
 
 /** One parsed bundled skill. */
-export interface CavemanSkill {
+interface CavemanSkill {
   /** Kebab-case skill name from frontmatter, or the directory name. */
   readonly name: string
   /** Routing description from frontmatter. */
@@ -61,7 +61,7 @@ export interface CavemanSkill {
 }
 
 /** Options for {@link createSkillProvider}. */
-export interface SkillProviderOptions {
+interface SkillProviderOptions {
   /** Directory holding one subdirectory per skill. */
   readonly skillsDir: string
   /** Receives non-fatal discovery problems instead of throwing. */
@@ -81,7 +81,7 @@ function readString(value: unknown): string {
  * @param entryName - directory name fallback when frontmatter omits `name`.
  * @returns the parsed skill, or `undefined` with a warning when invalid.
  */
-export async function readSkillFile(
+async function readSkillFile(
   path: string,
   onWarn?: (message: string) => void,
   entryName?: string,

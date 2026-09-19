@@ -86,9 +86,7 @@ The row schema declares no default for `defaultMode`, so an absent field stays
 absent and `apply` resolves the startup level in this order: the row's
 `defaultMode`, then `CAVEMAN_DEFAULT_MODE`, then
 `~/.config/caveman/config.json`'s `defaultMode`, then `full`. An invalid value
-fails while the plugin loads rather than silently doing the wrong thing. The
-settings card also carries a backup directory for `/caveman-compress`
-(`compressBackupDir`, empty = platform default).
+fails while the plugin loads rather than silently doing the wrong thing.
 
 ## How it works
 

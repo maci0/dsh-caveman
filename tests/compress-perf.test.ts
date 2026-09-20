@@ -59,6 +59,21 @@ const MEASURED_PASSES = 10
 const MAX_CPU_MICROS_PER_PASS = 35_000
 
 /**
+ * The host-speed yardstick: one regex scan over the same source, run in the
+ * same process as the pipeline. Absolute microseconds fail on a slower CI
+ * runner; the ratio of pipeline to this scan is what a regression moves.
+ */
+function calibrate(): number {
+  const before = process.cpuUsage()
+  for (let pass = 0; pass < 3; pass += 1) source.replace(/[aeiou]/g, '')
+  const delta = process.cpuUsage(before)
+  return delta.user + delta.system
+}
+
+/** A ratio this far above the reference reading is a real regression, not a slow host. */
+const MAX_PIPELINE_TO_SCAN_RATIO = 15
+
+/**
  * Ceiling for young-generation collections over the fixed allocation workload
  * (see the third test). Reference is 111–112 for the current pipeline and
  * 137–138 for the one before the allocation pass, measured with a pinned 4 MB
@@ -100,21 +115,28 @@ test('compress pipeline stays inside its CPU budget on a fixed corpus', () => {
     samples.push(after.user + after.system)
   }
 
+  const scanSamples: number[] = []
+  for (let pass = 0; pass < MEASURED_PASSES; pass += 1) scanSamples.push(calibrate())
+  const scan = Math.min(...scanSamples)
+
   const fastest = Math.min(...samples)
+  const ratio = fastest / scan
   const sorted = samples.toSorted((left, right) => left - right)
   const median = sorted[Math.floor(sorted.length / 2)] ?? 0
   console.log(
     `compress-perf: ${CORPUS_BYTES} B corpus, min ${(fastest / 1000).toFixed(1)} ms, `
     + `median ${(median / 1000).toFixed(1)} ms CPU per pass `
-    + `(budget ${(MAX_CPU_MICROS_PER_PASS / 1000).toFixed(0)} ms)`,
+    + `(reference scan ${(scan / 1000).toFixed(2)} ms, ratio ${ratio.toFixed(1)} `
+    + `of ${MAX_PIPELINE_TO_SCAN_RATIO} allowed; absolute budget `
+    + `${(MAX_CPU_MICROS_PER_PASS / 1000).toFixed(0)} ms on the recording host)`,
   )
 
   assert.ok(
-    fastest < MAX_CPU_MICROS_PER_PASS,
-    `compress pipeline retired ${(fastest / 1000).toFixed(1)} ms CPU for one pass `
-    + `over ${CORPUS_BYTES} bytes; budget is ${(MAX_CPU_MICROS_PER_PASS / 1000).toFixed(0)} ms. `
-    + 'A real algorithmic regression, or a host much slower than the recorded reference — '
-    + 're-run bench/compress-bench.mjs before raising the budget.',
+    ratio < MAX_PIPELINE_TO_SCAN_RATIO,
+    `compress pipeline cost ${ratio.toFixed(1)}x the reference scan `
+    + `(${(fastest / 1000).toFixed(1)} ms vs ${(scan / 1000).toFixed(2)} ms CPU) over `
+    + `${CORPUS_BYTES} bytes; the limit is ${MAX_PIPELINE_TO_SCAN_RATIO}x. `
+    + 'Re-run bench/compress-bench.mjs before raising it.',
   )
 })
 

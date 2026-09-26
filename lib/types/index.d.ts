@@ -21,29 +21,23 @@
  *
  * @module dsh-caveman
  */
+import type { Volatile } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { type CavemanMode } from './modes.ts';
 import type { HostContext } from './host.ts';
 /** Plugin name as it appears in the loader. */
 export declare const name = "caveman";
 /**
- * Configuration accepted from this plugin's row in a profile patch.
- *
- * The exported schema is what Cordis validates the row against before `apply`
- * runs. It deliberately declares no default for `defaultMode`: a schema default
- * would fill the field before `apply`, which would silently outrank
- * `CAVEMAN_DEFAULT_MODE` and `~/.config/caveman/config.json`. Absence flows to
- * `resolveDefaultMode`, which owns the documented chain, and `apply` still
- * validates `defaultMode` itself so a caller that bypasses the loader cannot
- * mount a bad level.
+ * Configuration received by the plugin, as the loader resolved this row
+ * against the schema below: every ordinary field carries its default, and every
+ * volatile field arrives as the live reference the settings document writes
+ * through. Read `.get()` when starting an operation.
  */
 export interface Config {
-    /** Startup level. Absent resolves through the chain, ending at `full`. Volatile on v0.1.7. */
-    readonly defaultMode?: CavemanMode | {
-        readonly value: CavemanMode | undefined;
-    };
+    /** Startup level. Absent resolves through the chain, ending at `full`. */
+    readonly defaultMode: Volatile<CavemanMode | undefined>;
     /** Size cap in bytes for `/caveman-compress`; defaults to 500000. */
-    readonly maxFileSize?: number;
+    readonly maxFileSize: number;
 }
 /**
  * Row schema: the accepted levels and the size cap live here.
@@ -51,7 +45,9 @@ export interface Config {
  * `defaultMode` is volatile, the only kind of field the settings document
  * accepts: a level change commits into the running config without remounting
  * the plugin, and the field still carries no default, so absence keeps flowing
- * to `resolveDefaultMode`.
+ * to `resolveDefaultMode`. A schema default would fill the field before `apply`,
+ * which would silently outrank `CAVEMAN_DEFAULT_MODE` and
+ * `~/.config/caveman/config.json`.
  */
 export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     defaultMode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "volatile">;
@@ -73,6 +69,6 @@ export declare function readUpstreamConfigFile(path?: string): {
 /**
  * Mount the plugin.
  * @param ctx - the host context.
- * @param config - optional row configuration.
+ * @param config - the schema-resolved row configuration.
  */
-export declare function apply(ctx: HostContext, config?: Config): void;
+export declare function apply(ctx: HostContext, config: Config): void;

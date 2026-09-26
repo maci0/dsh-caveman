@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply, Config, readUpstreamConfigFile } from '../src/index.ts'
 import type { Config as ConfigType } from '../src/index.ts'
+import { MAX_FILE_SIZE } from '../src/compress-files.ts'
 import type {
   CommandDefinitionLike,
   HostContext,
@@ -36,14 +37,22 @@ interface Captured {
 function createHost(options: { failUpdate?: boolean } = {}): {
   ctx: HostContext
   captured: Captured
-  config: { defaultMode: CavemanMode }
+  config: ConfigType
+  setDefaultMode: (mode: CavemanMode | undefined) => void
   emit: (event: SessionEventLike) => void
   emitVolatile: () => void
 } {
   const captured: Captured = {
     sections: [], providers: [], tools: [], commands: [], updates: [],
   }
-  const row: { defaultMode: CavemanMode } = { defaultMode: 'full' }
+  // The live row value. `Volatile<T>` is structurally `{ get(): T }`, so the
+  // double below satisfies the exported interface with no cast, and a test can
+  // move the row the way a committed settings write does.
+  let row: CavemanMode | undefined = 'full'
+  const config: ConfigType = {
+    defaultMode: { get: () => row },
+    maxFileSize: MAX_FILE_SIZE,
+  }
   const volatileListeners: Array<() => void> = []
 
   const services = {
@@ -75,7 +84,7 @@ function createHost(options: { failUpdate?: boolean } = {}): {
       update: async (namespace: string, patch: Record<string, unknown>): Promise<void> => {
         if (options.failUpdate === true) throw new Error('settings document is read-only')
         captured.updates.push({ namespace, patch })
-        if (typeof patch['defaultMode'] === 'string') row.defaultMode = patch['defaultMode'] as CavemanMode
+        if (typeof patch['defaultMode'] === 'string') row = patch['defaultMode'] as CavemanMode
       },
     },
   }
@@ -98,7 +107,8 @@ function createHost(options: { failUpdate?: boolean } = {}): {
   return {
     ctx: ctx as unknown as HostContext,
     captured,
-    config: row,
+    config,
+    setDefaultMode: (mode: CavemanMode | undefined): void => { row = mode },
     emit: (event: SessionEventLike): void => { for (const listener of listeners) listener({}, event) },
     emitVolatile: (): void => { for (const listener of volatileListeners) listener() },
   }
@@ -182,9 +192,9 @@ test('wenyan levels persist like every other level', async () => {
   ])
   assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: wenyan-full\n\n/)
 
-  // A card write is a committed settings change: the service leaves the source
-  // thunk alone and signals the commit through `onChange`.
-  host.config.defaultMode = 'lite'
+  // A card write is a committed settings change: the service updates the row
+  // in place and signals the commit through `onChange`.
+  host.setDefaultMode('lite')
   host.emitVolatile()
   assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: lite\n\n/)
 })
@@ -238,7 +248,7 @@ test('the command switches and reports through the UI', async () => {
 
 test('the tool renders its canonical value for the model', async () => {
   const host = createHost()
-  host.config.defaultMode = 'lite'
+  host.setDefaultMode('lite')
   apply(host.ctx, host.config)
   const tool = host.captured.tools[0]
   assert.ok(tool)
@@ -305,7 +315,7 @@ test('the tool reports session usage only when asked and available', async () =>
   const exec = { agent: { session } } as ToolRunContext
   const totals = { uncachedInputTokens: 100, outputTokens: 40, cacheReadTokens: 500, cacheWriteTokens: 10 }
   const projectionsHost = createProjectionsHost(totals)
-  apply(projectionsHost.ctx, { defaultMode: 'full' })
+  apply(projectionsHost.ctx, Config({ defaultMode: 'full' }))
   const using = projectionsHost.captured.tools[0]
   assert.ok(using)
 
@@ -390,13 +400,13 @@ test('apply fails loudly on configuration it cannot honor', () => {
   const host = createHost()
   // The exported schema rejects this while the row loads; `apply` owns the same
   // check for a caller that bypasses the loader.
-  const invalid = { defaultMode: 'review' } as unknown as ConfigType
+  const invalid = { defaultMode: { get: (): string => 'review' } } as unknown as ConfigType
   assert.throws(() => apply(host.ctx, invalid), /defaultMode must be one of off, lite, full, ultra, wenyan-lite, wenyan-full, wenyan-ultra/)
 
   // The size cap is a tunable, not a constant: the schema validates the type,
   // and `apply` rejects a value that is unusable as a byte cap.
-  assert.throws(() => apply(host.ctx, { maxFileSize: 0 }), /maxFileSize must be a positive number of bytes/)
-  assert.throws(() => apply(host.ctx, { maxFileSize: Number.NaN }), /maxFileSize must be a positive number of bytes/)
+  assert.throws(() => apply(host.ctx, Config({ maxFileSize: 0 })), /maxFileSize must be a positive number of bytes/)
+  assert.throws(() => apply(host.ctx, Config({ maxFileSize: Number.NaN })), /maxFileSize must be a positive number of bytes/)
 })
 
 test('an absent defaultMode resolves through the documented chain', () => {
@@ -415,7 +425,7 @@ test('an absent defaultMode resolves through the documented chain', () => {
   const previous = process.env['CAVEMAN_DEFAULT_MODE']
   process.env['CAVEMAN_DEFAULT_MODE'] = 'wenyan-lite'
   try {
-    apply(host.ctx, {})
+    apply(host.ctx, row)
     assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: wenyan-lite\n\n/)
   } finally {
     if (previous === undefined) delete process.env['CAVEMAN_DEFAULT_MODE']
@@ -446,7 +456,7 @@ test('the configured maxFileSize caps the compress tool', async () => {
   const { join } = await import('node:path')
 
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full', maxFileSize: 20 })
+  apply(host.ctx, Config({ defaultMode: 'full', maxFileSize: 20 }))
 
   const root = await mkdtemp(join(tmpdir(), 'caveman-maxsize-'))
   try {
@@ -491,7 +501,7 @@ test('a "stop caveman" message turns the level off before the turn assembles', a
 
 test('"normal mode" works the same way', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'ultra' })
+  apply(host.ctx, Config({ defaultMode: 'ultra' }))
 
   host.emit(userEvent('  Normal Mode! '))
   assert.equal(sectionText(host.captured.sections[0]), '')
@@ -521,7 +531,7 @@ test('only the human\'s own words may deactivate', async () => {
 
 test('an already-off level is not written again', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'off' })
+  apply(host.ctx, Config({ defaultMode: 'off' }))
 
   host.emit(userEvent('stop caveman'))
   await settle()

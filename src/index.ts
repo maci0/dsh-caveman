@@ -26,6 +26,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
+import type { Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import {
@@ -70,21 +71,16 @@ const ModeSchema = z.union([...RUNTIME_MODES])
 const ONCE_MODES = RUNTIME_MODES.filter((mode) => mode !== 'off')
 
 /**
- * Configuration accepted from this plugin's row in a profile patch.
- *
- * The exported schema is what Cordis validates the row against before `apply`
- * runs. It deliberately declares no default for `defaultMode`: a schema default
- * would fill the field before `apply`, which would silently outrank
- * `CAVEMAN_DEFAULT_MODE` and `~/.config/caveman/config.json`. Absence flows to
- * `resolveDefaultMode`, which owns the documented chain, and `apply` still
- * validates `defaultMode` itself so a caller that bypasses the loader cannot
- * mount a bad level.
+ * Configuration received by the plugin, as the loader resolved this row
+ * against the schema below: every ordinary field carries its default, and every
+ * volatile field arrives as the live reference the settings document writes
+ * through. Read `.get()` when starting an operation.
  */
 export interface Config {
-  /** Startup level. Absent resolves through the chain, ending at `full`. Volatile on v0.1.7. */
-  readonly defaultMode?: CavemanMode | { readonly value: CavemanMode | undefined }
+  /** Startup level. Absent resolves through the chain, ending at `full`. */
+  readonly defaultMode: Volatile<CavemanMode | undefined>
   /** Size cap in bytes for `/caveman-compress`; defaults to 500000. */
-  readonly maxFileSize?: number
+  readonly maxFileSize: number
 }
 
 /**
@@ -93,7 +89,9 @@ export interface Config {
  * `defaultMode` is volatile, the only kind of field the settings document
  * accepts: a level change commits into the running config without remounting
  * the plugin, and the field still carries no default, so absence keeps flowing
- * to `resolveDefaultMode`.
+ * to `resolveDefaultMode`. A schema default would fill the field before `apply`,
+ * which would silently outrank `CAVEMAN_DEFAULT_MODE` and
+ * `~/.config/caveman/config.json`.
  */
 export const Config = z.object({
   defaultMode: ModeSchema.volatile(),
@@ -133,17 +131,19 @@ export function readUpstreamConfigFile(
 /**
  * Mount the plugin.
  * @param ctx - the host context.
- * @param config - optional row configuration.
+ * @param config - the schema-resolved row configuration.
  */
-export function apply(ctx: HostContext, config: Config = {}): void {
-  // Reject configuration that would silently do the wrong thing.
-  const configured = plainMode(config.defaultMode)
+export function apply(ctx: HostContext, config: Config): void {
+  // Reject configuration that would silently do the wrong thing. The loader
+  // already validated the row; this keeps a caller that bypasses it from
+  // mounting a bad level.
+  const configured = config.defaultMode.get()
   if (configured !== undefined && normalizeMode(configured) === undefined) {
     throw new Error(
-      `[caveman] defaultMode must be one of ${RUNTIME_MODES.join(', ')}; got ${JSON.stringify(config.defaultMode)}`,
+      `[caveman] defaultMode must be one of ${RUNTIME_MODES.join(', ')}; got ${JSON.stringify(configured)}`,
     )
   }
-  const maxFileSize = config.maxFileSize ?? MAX_FILE_SIZE
+  const maxFileSize = config.maxFileSize
   if (!Number.isFinite(maxFileSize) || maxFileSize <= 0) {
     throw new Error(
       `[caveman] maxFileSize must be a positive number of bytes; got ${JSON.stringify(config.maxFileSize)}`,
@@ -168,14 +168,9 @@ export function apply(ctx: HostContext, config: Config = {}): void {
 
   /** Session-local level, used when the profile write cannot hold the level. */
   let override: CavemanMode | undefined
-  /** Live row. v0.1.7 updates volatile fields in place. */
-  const source = (): unknown => config
 
-  const configuredMode = (): CavemanMode | undefined => {
-    const value = source()
-    if (value === null || typeof value !== 'object') return undefined
-    return normalizeMode(plainMode((value as { defaultMode?: unknown }).defaultMode))
-  }
+  /** Live row: a committed settings change updates the volatile reference in place. */
+  const configuredMode = (): CavemanMode | undefined => normalizeMode(config.defaultMode.get())
 
   const activeMode = (): CavemanMode => override ?? configuredMode() ?? startup
 
@@ -623,12 +618,4 @@ async function handleCompressCommand(
     kind: 'success',
     text: compressSentence(outcome.originalChars, outcome.compressedChars, outcome.backupPath),
   }
-}
-
-/** Unwrap a v0.1.7 volatile ref. A plain value passes through. */
-function plainMode(value: unknown): unknown {
-  if (value !== null && typeof value === 'object' && typeof (value as { get?: unknown }).get === 'function') {
-    return (value as { get: () => unknown }).get()
-  }
-  return value
 }

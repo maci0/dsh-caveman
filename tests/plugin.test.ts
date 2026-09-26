@@ -199,6 +199,29 @@ test('wenyan levels persist like every other level', async () => {
   assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: lite\n\n/)
 })
 
+test('a session level survives a volatile update that has not committed its write', async () => {
+  // The settings service commits a moment after the command returns, so the
+  // `loader/volatile-update` that precedes the commit still shows the level the
+  // user just replaced. Dropping the session override there assembles one
+  // prompt with the old ruleset.
+  const host = createHost({ failUpdate: true })
+  apply(host.ctx, host.config)
+  await callTool(host, { mode: 'lite' })
+
+  host.emitVolatile()
+  assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: lite\n\n/)
+
+  // Once the row carries it, the document is authoritative again.
+  host.setDefaultMode('lite')
+  host.emitVolatile()
+  assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: lite\n\n/)
+
+  // And a later edit by another writer takes over.
+  host.setDefaultMode('ultra')
+  host.emitVolatile()
+  assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: ultra\n\n/)
+})
+
 test('a refused settings write still applies the level for this session', async () => {
   const host = createHost({ failUpdate: true })
   apply(host.ctx, host.config)

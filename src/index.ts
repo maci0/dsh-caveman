@@ -12,7 +12,7 @@
  *   (`/caveman` command);
  * - the `caveman` settings namespace makes the level persistent and pairs with
  *   this package's browser half, which renders the card in the Web client's
- *   Plugins → Plugin configuration tab.
+ *   Plugins page, on the caveman row's Configure control.
  *
  * Skill content is adapted from the reference implementation
  * (https://github.com/JuliusBrussee/caveman, MIT, © JuliusBrussee). Only the

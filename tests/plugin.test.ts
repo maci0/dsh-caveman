@@ -98,7 +98,11 @@ function createHost(options: { failUpdate?: boolean } = {}): {
   const ctx = {
     ...services,
     fiber: { entry: { options: { id: CAVEMAN_SETTINGS_NAMESPACE } } },
-    get: (name: string): unknown => (name === 'settings' ? services.settings : undefined),
+    // The optional seams are served the way a Cordis context serves them:
+    // through the accessor, which is also the shape `apply` has to use.
+    get: (name: string): unknown => name === 'settings'
+      ? services.settings
+      : name === 'sessionProjections' ? services.sessionProjections : undefined,
     inject: (_dependencies: readonly string[], callback: (scope: HostContext) => void): void => {
       callback(ctx as unknown as HostContext)
     },
@@ -359,12 +363,17 @@ function createProjectionsHost(totals: {
   const ctx = {
     ...(host.ctx as unknown as Record<string, unknown>),
     inject: (_dependencies: readonly string[], callback: (scope: HostContext) => void): void => {
+      const projections = {
+        stateOf: (session: unknown, key: string): unknown =>
+          key === 'tokenUsage' && (session as { id?: string })?.id === 's1' ? { totals } : undefined,
+      }
       const scope = {
         ...(host.ctx as unknown as Record<string, unknown>),
-        sessionProjections: {
-          stateOf: (session: unknown, key: string): unknown =>
-            key === 'tokenUsage' && (session as { id?: string })?.id === 's1' ? { totals } : undefined,
-        },
+        // A real Cordis context serves an optional service through the accessor
+        // only — reading it as a property is what throws there.
+        get: (name: string): unknown => name === 'sessionProjections'
+          ? projections
+          : (host.ctx as unknown as { get(name: string): unknown }).get(name),
       } as unknown as HostContext
       callback(scope)
     },

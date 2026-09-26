@@ -332,7 +332,13 @@ function readSessionUsage(
   scope: HostContext,
   exec: ToolExecLike | undefined,
 ): SessionUsage | undefined {
-  const projections: SessionProjectionsLike | undefined = scope.sessionProjections
+  // Read through the accessor: `sessionProjections` is an optional seam, and a
+  // Cordis context throws on a property access for a service it does not
+  // provide, which would turn "no usage available" into a failed tool call.
+  // Read through the accessor: `sessionProjections` is an optional seam, and a
+  // Cordis context throws on a property access for a service it does not
+  // provide, which would turn "no usage available" into a failed tool call.
+  const projections: SessionProjectionsLike | undefined = scope.get('sessionProjections')
   const session: unknown = exec?.agent?.session
   if (projections === undefined || session === undefined) return undefined
   let state: ProjectionStateLike | undefined

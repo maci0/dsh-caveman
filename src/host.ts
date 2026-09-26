@@ -128,6 +128,7 @@ export interface HostContext {
   on(event: 'loader/volatile-update', listener: () => void): Disposable
   /** Read one mounted service. `undefined` when that service is absent. */
   get(name: 'settings'): SettingsServiceLike | undefined
+  get(name: 'sessionProjections'): SessionProjectionsLike | undefined
   /** Owning fiber, present once the loader mounted this plugin. */
   readonly fiber?: { readonly entry?: { readonly options?: { readonly id?: string } } }
   readonly systemPrompt: {

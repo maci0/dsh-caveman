@@ -39,6 +39,7 @@ function createHost(options: { failUpdate?: boolean } = {}): {
   captured: Captured
   config: ConfigType
   setDefaultMode: (mode: CavemanMode | undefined) => void
+  setMaxFileSize: (bytes: number) => void
   emit: (event: SessionEventLike) => void
   emitVolatile: () => void
 } {
@@ -49,9 +50,12 @@ function createHost(options: { failUpdate?: boolean } = {}): {
   // double below satisfies the exported interface with no cast, and a test can
   // move the row the way a committed settings write does.
   let row: CavemanMode | undefined = 'full'
+  // The size cap is a live field too: a card write moves this value and the next
+  // compress call reads it.
+  let cap: number = MAX_FILE_SIZE
   const config: ConfigType = {
     defaultMode: { get: () => row },
-    maxFileSize: MAX_FILE_SIZE,
+    maxFileSize: { get: () => cap },
   }
   const volatileListeners: Array<() => void> = []
 
@@ -109,6 +113,7 @@ function createHost(options: { failUpdate?: boolean } = {}): {
     captured,
     config,
     setDefaultMode: (mode: CavemanMode | undefined): void => { row = mode },
+    setMaxFileSize: (bytes: number): void => { cap = bytes },
     emit: (event: SessionEventLike): void => { for (const listener of listeners) listener({}, event) },
     emitVolatile: (): void => { for (const listener of volatileListeners) listener() },
   }
@@ -403,10 +408,20 @@ test('apply fails loudly on configuration it cannot honor', () => {
   const invalid = { defaultMode: { get: (): string => 'review' } } as unknown as ConfigType
   assert.throws(() => apply(host.ctx, invalid), /defaultMode must be one of off, lite, full, ultra, wenyan-lite, wenyan-full, wenyan-ultra/)
 
-  // The size cap is a tunable, not a constant: the schema validates the type,
-  // and `apply` rejects a value that is unusable as a byte cap.
-  assert.throws(() => apply(host.ctx, Config({ maxFileSize: 0 })), /maxFileSize must be a positive number of bytes/)
-  assert.throws(() => apply(host.ctx, Config({ maxFileSize: Number.NaN })), /maxFileSize must be a positive number of bytes/)
+  // The size cap is a tunable, not a constant: the schema bounds it for the
+  // form, and `apply` owns the same check for a caller that bypasses the loader
+  // with a live reference whose value is unusable.
+  assert.throws(() => Config({ maxFileSize: 0 }), /maxFileSize/)
+  const unusableCap = {
+    defaultMode: { get: () => undefined },
+    maxFileSize: { get: () => 0 },
+  } as unknown as ConfigType
+  assert.throws(() => apply(host.ctx, unusableCap), /maxFileSize must be a positive number of bytes/)
+  const notANumber = {
+    defaultMode: { get: () => undefined },
+    maxFileSize: { get: () => Number.NaN },
+  } as unknown as ConfigType
+  assert.throws(() => apply(host.ctx, notANumber), /maxFileSize must be a positive number of bytes/)
 })
 
 test('an absent defaultMode resolves through the documented chain', () => {
@@ -415,12 +430,14 @@ test('an absent defaultMode resolves through the documented chain', () => {
   // resolution chain still gets its turn. A schema default would have filled
   // `full` here and silently outranked both remaining sources.
   const row = Config({})
-  assert.equal(row.maxFileSize, 500000)
+  assert.equal(row.maxFileSize?.get(), 500000)
   assert.equal(row.defaultMode?.get(), undefined)
-  // The settings document edits only volatile fields; a plain field here is the
-  // "has no volatile fields" failure the configuration card hits.
+  // The settings document edits only volatile fields, so both knobs are
+  // volatile; a plain field here is the "has no volatile fields" failure the
+  // configuration card hits.
   const dict = (Config as unknown as { dict: Record<string, { meta: { volatile?: boolean } }> }).dict
   assert.equal(dict['defaultMode']?.meta.volatile, true)
+  assert.equal(dict['maxFileSize']?.meta.volatile, true)
 
   const previous = process.env['CAVEMAN_DEFAULT_MODE']
   process.env['CAVEMAN_DEFAULT_MODE'] = 'wenyan-lite'

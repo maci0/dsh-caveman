@@ -258,6 +258,37 @@ test('an unavailable namespace renders no trace of the card', () => {
   assert.equal(component(), null)
 })
 
+test('the size cap is editable, staged, validated, and then written', async () => {
+  const { calls, component, react } = openCard({
+    status: 'ready', value: { defaultMode: 'lite', maxFileSize: 500000 }, user: {}, writable: true,
+  })
+
+  let tree = openPage(react, component)
+  const input = () => tree.filter((element) => element.props['aria-label'] === 'Largest file to compress (bytes)')[0]
+  const save = () => buttons(tree).filter((element) => String(element.children?.[0] ?? '') === 'Save')[0]
+  assert.equal(input()?.props['value'], '500000')
+  assert.notEqual(save(), undefined)
+
+  // A cap that is not a whole positive number of bytes never reaches the
+  // settings document.
+  ;(input()?.props['onChange'] as (event: { target: { value: string } }) => void)({ target: { value: '0' } })
+  tree = openPage(react, component)
+  ;(save()?.props['onClick'] as () => void)()
+  await new Promise((resolve) => { setTimeout(resolve, 0) })
+  assert.deepEqual(calls.set, [], 'an invalid cap is refused before the write')
+  tree = openPage(react, component)
+  assert.match(JSON.stringify(tree.map((element) => element.children)), /whole number of bytes/)
+
+  // A usable cap is written as a number, and the draft clears.
+  ;(input()?.props['onChange'] as (event: { target: { value: string } }) => void)({ target: { value: '250000' } })
+  tree = openPage(react, component)
+  ;(save()?.props['onClick'] as () => void)()
+  await new Promise((resolve) => { setTimeout(resolve, 0) })
+  assert.deepEqual(calls.set, [['maxFileSize', 250000]])
+  tree = openPage(react, component)
+  assert.equal(input()?.props['value'], '500000', 'the snapshot decides the shown value once the draft clears')
+})
+
 test('the chrome is class-based, so no state change goes through React style diffing', () => {
   const { open } = openCard({ status: 'ready', value: { defaultMode: 'lite' }, user: { defaultMode: 'lite' }, writable: true })
 

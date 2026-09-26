@@ -36,25 +36,32 @@ export declare const name = "caveman";
 export interface Config {
     /** Startup level. Absent resolves through the chain, ending at `full`. */
     readonly defaultMode: Volatile<CavemanMode | undefined>;
-    /** Size cap in bytes for `/caveman-compress`; defaults to 500000. */
-    readonly maxFileSize: number;
+    /**
+     * Size cap in bytes for `/caveman-compress`; defaults to 500000. Volatile,
+     * so the Plugins card can raise or lower it while the plugin runs.
+     */
+    readonly maxFileSize: Volatile<number>;
 }
 /**
  * Row schema: the accepted levels and the size cap live here.
  *
- * `defaultMode` is volatile, the only kind of field the settings document
- * accepts: a level change commits into the running config without remounting
- * the plugin, and the field still carries no default, so absence keeps flowing
- * to `resolveDefaultMode`. A schema default would fill the field before `apply`,
+ * Both fields are volatile, the only kind the settings document accepts: a
+ * change commits into the running config without remounting the plugin. Each is
+ * read at the moment it is used — the level at every prompt assembly, the size
+ * cap at every compress call — so an edit from the Plugins card takes effect on
+ * the next use rather than on a restart.
+ *
+ * `defaultMode` carries no default, so absence keeps flowing to
+ * `resolveDefaultMode`. A schema default would fill the field before `apply`,
  * which would silently outrank `CAVEMAN_DEFAULT_MODE` and
  * `~/.config/caveman/config.json`.
  */
 export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     defaultMode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "volatile">;
-    maxFileSize: z<number, number, "defined">;
+    maxFileSize: z<number, number, "volatile-defined">;
 }>>, Schemastery.ObjectT<NoInfer<{
     defaultMode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "volatile">;
-    maxFileSize: z<number, number, "defined">;
+    maxFileSize: z<number, number, "volatile-defined">;
 }>>, "plain">;
 /**
  * Read the upstream config file's `defaultMode`, ignoring everything that

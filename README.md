@@ -86,7 +86,7 @@ to full sentences.
 | Field | Default | Meaning |
 |---|---|---|
 | `defaultMode` | unset | Startup level. Absent means "ask the chain below". One of the seven levels when set. |
-| `maxFileSize` | `500000` | Size cap in bytes for `/caveman-compress`. Positive number. |
+| `maxFileSize` | `500000` | Size cap in bytes for `/caveman-compress`. Positive whole number, editable from the card, and read on every compress call. |
 
 The row schema declares no default for `defaultMode`, so an absent field stays
 absent and `apply` resolves the startup level in this order: the row's

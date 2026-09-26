@@ -79,23 +79,30 @@ const ONCE_MODES = RUNTIME_MODES.filter((mode) => mode !== 'off')
 export interface Config {
   /** Startup level. Absent resolves through the chain, ending at `full`. */
   readonly defaultMode: Volatile<CavemanMode | undefined>
-  /** Size cap in bytes for `/caveman-compress`; defaults to 500000. */
-  readonly maxFileSize: number
+  /**
+   * Size cap in bytes for `/caveman-compress`; defaults to 500000. Volatile,
+   * so the Plugins card can raise or lower it while the plugin runs.
+   */
+  readonly maxFileSize: Volatile<number>
 }
 
 /**
  * Row schema: the accepted levels and the size cap live here.
  *
- * `defaultMode` is volatile, the only kind of field the settings document
- * accepts: a level change commits into the running config without remounting
- * the plugin, and the field still carries no default, so absence keeps flowing
- * to `resolveDefaultMode`. A schema default would fill the field before `apply`,
+ * Both fields are volatile, the only kind the settings document accepts: a
+ * change commits into the running config without remounting the plugin. Each is
+ * read at the moment it is used — the level at every prompt assembly, the size
+ * cap at every compress call — so an edit from the Plugins card takes effect on
+ * the next use rather than on a restart.
+ *
+ * `defaultMode` carries no default, so absence keeps flowing to
+ * `resolveDefaultMode`. A schema default would fill the field before `apply`,
  * which would silently outrank `CAVEMAN_DEFAULT_MODE` and
  * `~/.config/caveman/config.json`.
  */
 export const Config = z.object({
   defaultMode: ModeSchema.volatile(),
-  maxFileSize: z.number().default(MAX_FILE_SIZE),
+  maxFileSize: z.number().min(1).default(MAX_FILE_SIZE).volatile(),
 })
 
 /** Upstream config file, read the way upstream reads it. */
@@ -143,12 +150,22 @@ export function apply(ctx: HostContext, config: Config): void {
       `[caveman] defaultMode must be one of ${RUNTIME_MODES.join(', ')}; got ${JSON.stringify(configured)}`,
     )
   }
-  const maxFileSize = config.maxFileSize
-  if (!Number.isFinite(maxFileSize) || maxFileSize <= 0) {
-    throw new Error(
-      `[caveman] maxFileSize must be a positive number of bytes; got ${JSON.stringify(config.maxFileSize)}`,
-    )
+  /**
+   * The size cap as it stands for this call. Reading it per compress keeps a
+   * card edit live; the check runs on every read because the settings document
+   * only validates the schema's bounds, not the value a later writer left.
+   */
+  const maxFileSize = (): number => {
+    const value = config.maxFileSize.get()
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(
+        `[caveman] maxFileSize must be a positive number of bytes; got ${JSON.stringify(value)}`,
+      )
+    }
+    return value
   }
+  // Fail at load on a row that is already unusable, rather than on first use.
+  maxFileSize()
 
   // `<package>/skills`, resolved from this module's own location.
   const skillsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills')
@@ -262,7 +279,7 @@ export function apply(ctx: HostContext, config: Config): void {
       name: 'caveman-compress',
       description: '🗜 Compress a memory file with local rules (backup kept).',
       input: { hint: '<filepath>' },
-      handler: async (invocation) => handleCompressCommand(invocation, maxFileSize),
+      handler: async (invocation) => handleCompressCommand(invocation, maxFileSize()),
     })
   })
 
@@ -457,10 +474,11 @@ function usageField(
 /**
  * Build the model-facing compress tool. Local deterministic rules only —
  * no model call, no bytes leave the machine.
- * @param maxFileSize - configured size cap in bytes.
+ * @param maxFileSize - reads the configured size cap in bytes, so a card edit
+ * applies to the next call.
  * @returns the registered tool definition.
  */
-function createCompressTool(maxFileSize: number) {
+function createCompressTool(maxFileSize: () => number) {
   return defineTool({
     name: 'caveman-compress',
     description:
@@ -494,7 +512,7 @@ function createCompressTool(maxFileSize: number) {
       if (args.filepath.trim() === '') {
         throw new Error('caveman-compress needs a filepath string.')
       }
-      const outcome = compressFile(args.filepath, maxFileSize)
+      const outcome = compressFile(args.filepath, maxFileSize())
       // The write is atomic but not free; a cancelled call must not claim it.
       exec?.signal?.throwIfAborted()
       return outcome

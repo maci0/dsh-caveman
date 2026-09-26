@@ -30,7 +30,6 @@ import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import {
   buildModeInstructions,
-  DEFAULT_MODE,
   isDeactivationCommand,
   normalizeCommandMode,
   normalizeMode,
@@ -58,11 +57,9 @@ export const name = 'caveman'
 
 /**
  * Settings namespace the browser card edits — the join key between this host
- * half and `lib/client.js`. The card registers into `settings.plugin.item`
- * under the same key, and the tab pairs the two without knowing what it means.
+ * half and `lib/client.js`. The card registers into `plugins.item`
+ * under the same id, and the Plugins page pairs the two without knowing what it means.
  */
-const CAVEMAN_SETTINGS_NAMESPACE = 'caveman'
-
 /**
  * Every accepted level as a schema union, shared by the persisted settings and
  * the plugin row so the accepted set is declared once.
@@ -71,11 +68,6 @@ const ModeSchema = z.union([...RUNTIME_MODES])
 
 /** The levels a one-shot `once` call accepts: every level but `off`. */
 const ONCE_MODES = RUNTIME_MODES.filter((mode) => mode !== 'off')
-
-/** Persisted configuration. Every caveman level persists; there is no session-only level. */
-const CavemanSettings = z.object({
-  mode: ModeSchema.default(DEFAULT_MODE),
-})
 
 /**
  * Configuration accepted from this plugin's row in a profile patch.
@@ -89,14 +81,14 @@ const CavemanSettings = z.object({
  * mount a bad level.
  */
 export interface Config {
-  /** Startup level. Absent resolves through the chain, ending at `full`. */
-  readonly defaultMode?: CavemanMode
+  /** Startup level. Absent resolves through the chain, ending at `full`. Volatile on v0.1.7. */
+  readonly defaultMode?: CavemanMode | { readonly value: CavemanMode | undefined }
   /** Size cap in bytes for `/caveman-compress`; defaults to 500000. */
   readonly maxFileSize?: number
 }
 
 /** Row schema: the accepted levels and the size cap live here. */
-export const Config: z<Config> = z.object({
+export const Config = z.object({
   defaultMode: ModeSchema,
   maxFileSize: z.number().default(MAX_FILE_SIZE),
 })
@@ -138,7 +130,8 @@ export function readUpstreamConfigFile(
  */
 export function apply(ctx: HostContext, config: Config = {}): void {
   // Reject configuration that would silently do the wrong thing.
-  if (config.defaultMode !== undefined && normalizeMode(config.defaultMode) === undefined) {
+  const configured = plainMode(config.defaultMode)
+  if (configured !== undefined && normalizeMode(configured) === undefined) {
     throw new Error(
       `[caveman] defaultMode must be one of ${RUNTIME_MODES.join(', ')}; got ${JSON.stringify(config.defaultMode)}`,
     )
@@ -153,7 +146,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
   // `<package>/skills`, resolved from this module's own location.
   const skillsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills')
   const startup = resolveDefaultMode({
-    configured: config.defaultMode,
+    configured,
     configFile: readUpstreamConfigFile(),
   })
   // Parsed once, at load: the ruleset is filtered per assembly, so the
@@ -166,16 +159,15 @@ export function apply(ctx: HostContext, config: Config = {}): void {
     console.warn(`[caveman] ${message}`)
   }
 
-  /** Session-local level, used when the settings document cannot hold the write. */
+  /** Session-local level, used when the profile write cannot hold the level. */
   let override: CavemanMode | undefined
-  /** Authoritative configuration source: the settings scope once attached, else the row. */
-  let source: () => unknown = () => ({ mode: startup })
-  let settings: SettingsServiceLike | undefined
+  /** Live row. v0.1.7 updates volatile fields in place. */
+  const source = (): unknown => config
 
   const configuredMode = (): CavemanMode | undefined => {
     const value = source()
     if (value === null || typeof value !== 'object') return undefined
-    return normalizeMode((value as { mode?: unknown }).mode)
+    return normalizeMode(plainMode((value as { defaultMode?: unknown }).defaultMode))
   }
 
   const activeMode = (): CavemanMode => override ?? configuredMode() ?? startup
@@ -186,11 +178,13 @@ export function apply(ctx: HostContext, config: Config = {}): void {
    * @param signal - cancels the write when the calling tool was cancelled.
    */
   const persist = async (next: CavemanMode, signal?: AbortSignal): Promise<boolean> => {
-    if (settings === undefined || normalizeMode(next) === undefined) return false
+    const settings = ctx.get('settings') as SettingsServiceLike | undefined
+    const entryId = ctx.fiber?.entry?.options?.id
+    if (settings === undefined || typeof entryId !== 'string' || normalizeMode(next) === undefined) return false
     signal?.throwIfAborted()
     let persisted: boolean
     try {
-      await settings.update(CAVEMAN_SETTINGS_NAMESPACE, { mode: next })
+      await settings.update(entryId, { defaultMode: next })
       persisted = true
     } catch (error) {
       warn(`could not persist level "${next}": ${error instanceof Error ? error.message : String(error)}`)
@@ -230,25 +224,8 @@ export function apply(ctx: HostContext, config: Config = {}): void {
     })
   }
 
-  ctx.inject(['settings'], (scope) => {
-    settings = scope.settings
-    settings.installSection(
-      ctx,
-      CAVEMAN_SETTINGS_NAMESPACE,
-      CavemanSettings,
-      { mode: startup },
-      {
-        setSource: (current) => {
-          source = current
-        },
-        // Fires at attach and after every committed change. A settings change
-        // supersedes a session-local override; the ruleset itself is re-read at
-        // each assembly, so there is nothing else to re-judge here.
-        onChange: () => {
-          override = undefined
-        },
-      },
-    )
+  ctx.on('loader/volatile-update', () => {
+    override = undefined
   })
 
   ctx.inject(['systemPrompt'], (scope) => {
@@ -639,4 +616,12 @@ async function handleCompressCommand(
     kind: 'success',
     text: compressSentence(outcome.originalChars, outcome.compressedChars, outcome.backupPath),
   }
+}
+
+/** Unwrap a v0.1.7 volatile ref. A plain value passes through. */
+function plainMode(value: unknown): unknown {
+  if (value !== null && typeof value === 'object' && typeof (value as { get?: unknown }).get === 'function') {
+    return (value as { get: () => unknown }).get()
+  }
+  return value
 }

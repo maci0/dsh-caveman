@@ -69,11 +69,11 @@ function loadBundle(snapshot: Snapshot, calls: { set: unknown[][]; unset: unknow
   }
   const registeredLocales: string[] = []
 
-  const bound: Record<string, unknown>[] = []
+  const bound: string[] = []
   const injected: string[] = []
   const registered: { entry: Record<string, unknown>; component: () => Element | null }[] = []
   const ctx = {
-    settingsScope: { bind: (spec: Record<string, unknown>) => { bound.push(spec); return scope } },
+    configForms: { get: (namespace: string) => { bound.push(namespace); return scope } },
     locale: {
       register: (ns: string, dicts: Record<string, Record<string, string>>): (() => void) => {
         registeredLocales.push(ns)
@@ -111,9 +111,9 @@ function loadBundle(snapshot: Snapshot, calls: { set: unknown[][]; unset: unknow
 
 /** The component registered into one slot, by slot name. */
 function componentFor(
-  registered: { entry: Record<string, unknown>; component: () => Element | null }[],
+  registered: { entry: Record<string, unknown>; component: (props?: { view?: string }) => Element | string | null }[],
   slot: string,
-): () => Element | null {
+): (props?: { view?: string }) => Element | string | null {
   const found = registered.filter((entry) => entry.entry['name'] === slot)[0]
   assert.ok(found, `no component registered into ${slot}`)
   return found.component
@@ -135,9 +135,9 @@ function walk(node: unknown, found: Element[] = []): Element[] {
 }
 
 /** Render one component through the stub, resetting its hook cursor. */
-function render(react: ReactStub, component: () => Element | null): Element[] {
+function render(react: ReactStub, component: (props?: { view?: string }) => Element | string | null, view = 'page'): Element[] {
   react.reset()
-  return walk(component())
+  return walk(component({ view }))
 }
 
 function buttons(tree: Element[]): Element[] {
@@ -148,11 +148,9 @@ function radios(tree: Element[]): Element[] {
   return tree.filter((element) => element.props['role'] === 'radio')
 }
 
-/** Expand the collapsed card and render it open. */
-function expand(react: ReactStub, component: () => Element | null): Element[] {
-  const collapsed = render(react, component)
-  ;(buttons(collapsed)[0]?.props['onClick'] as () => void)()
-  return render(react, component)
+/** Render the row configuration page. */
+function openPage(react: ReactStub, component: (props?: { view?: string }) => Element | string | null): Element[] {
+  return render(react, component, 'page')
 }
 
 /** Fresh write log for the card's settings scope. */
@@ -183,24 +181,24 @@ function openCard(
   calls: { set: unknown[][]; unset: unknown[][] } = newCalls(),
 ) {
   const bundle = loadBundle(snapshot, calls)
-  const component = componentFor(bundle.registered, 'settings.plugin.item')
-  return { ...bundle, calls, component, open: expand(bundle.react, component) }
+  const component = componentFor(bundle.registered, 'plugins.row.config')
+  return { ...bundle, calls, component, open: openPage(bundle.react, component) }
 }
 
 test('the card binds the caveman namespace and registers into the plugins tab', () => {
   const calls = newCalls()
   const { exported, bound, injected, registered, registeredLocales } = loadBundle(
-    { status: 'ready', value: { mode: 'lite' }, user: { mode: 'lite' }, writable: true },
+    { status: 'ready', value: { defaultMode: 'lite' }, user: { defaultMode: 'lite' }, writable: true },
     calls,
   )
 
-  assert.deepEqual(exported['inject'], ['slots', 'settingsScope', 'locale'])
-  assert.deepEqual(bound, [{ namespace: 'caveman' }])
-  assert.deepEqual(injected, ['settings.plugin.item', 'conversation.input.left'])
+  assert.deepEqual(exported['inject'], ['slots', 'configForms', 'locale'])
+  assert.deepEqual(bound, ['caveman'])
+  assert.deepEqual(injected, ['plugins.row.config', 'conversation.input.left'])
   assert.deepEqual(registeredLocales, ['caveman'])
   assert.equal(registered.length, 2)
-  assert.equal(registered[0]?.entry['name'], 'settings.plugin.item')
-  assert.equal(registered[0]?.entry['key'], 'caveman')
+  assert.equal(registered[0]?.entry['name'], 'plugins.row.config')
+  assert.equal(registered[0]?.entry['key'], 'dsh-caveman#caveman')
   // The documented keyed-card fields: `locale` names the namespace this card's
   // copy comes from. `inject` stays absent because the card closes over its own
   // bound scope and takes no injected props.
@@ -213,52 +211,39 @@ test('the card binds the caveman namespace and registers into the plugins tab', 
 test('the card renders collapsed, naming the plugin and the current level', () => {
   const calls = newCalls()
   const { registered, react } = loadBundle(
-    { status: 'ready', value: { mode: 'lite' }, user: {}, writable: true },
+    { status: 'ready', value: { defaultMode: 'lite' }, user: {}, writable: true },
     calls,
   )
 
-  const component = componentFor(registered, 'settings.plugin.item')
+  const component = componentFor(registered, 'plugins.row.config')
   const tree = render(react, component)
 
-  assert.equal(tree.filter((element) => element.type === 'li').length, 1)
-  assert.equal(buttons(tree).length, 1)
-  const header = buttons(tree)[0]
-  assert.ok(header)
-  assert.equal(header.props['aria-expanded'], false)
-  assert.equal(header.props['aria-label'], `Expand: Caveman v${pkgVersion}`)
-  assert.deepEqual(radios(tree), [])
-
-  const text = tree
-    .filter((element) => typeof element.children[0] === 'string' && element.children.length === 1)
-    .map((element) => element.children[0])
-  assert.deepEqual(text, [`Caveman v${pkgVersion}`, 'Terse-talk mode — level: Lite.'])
+  react.reset()
+  assert.equal(component({ view: 'summary' }), 'Terse-talk mode — level: Lite.')
+  const levels = assertLevels(tree, 'Lite')
+  assert.equal(levels.length, 7)
 })
 
 test('expanding reveals one radio per persisted level and writes the chosen one', () => {
-  const { calls, open } = openCard({ status: 'ready', value: { mode: 'full' }, user: {}, writable: true })
+  const { calls, open } = openCard({ status: 'ready', value: { defaultMode: 'full' }, user: {}, writable: true })
 
-  assert.equal(buttons(open)[0]?.props['aria-expanded'], true)
-  assert.equal(buttons(open)[0]?.props['aria-label'], `Collapse: Caveman v${pkgVersion}`)
   const levels = assertLevels(open, 'Full')
 
   ;(levels[6]?.props['onClick'] as () => void)()
-  assert.deepEqual(calls.set, [['mode', 'wenyan-ultra']])
+  assert.deepEqual(calls.set, [['defaultMode', 'wenyan-ultra']])
 })
 
 test('an overridden level is called out and offers a reset', () => {
-  const { calls, open } = openCard({ status: 'ready', value: { mode: 'ultra' }, user: { mode: 'ultra' }, writable: true })
-
-  const text = open.map((element) => element.children[0])
-  assert.ok(text.includes('Terse-talk mode — level: Ultra (overridden).'))
+  const { calls, open } = openCard({ status: 'ready', value: { defaultMode: 'ultra' }, user: { defaultMode: 'ultra' }, writable: true })
 
   const reset = buttons(open).find((button) => button.children[0] === 'Reset')
   assert.ok(reset, 'the reset control renders while the field is overridden')
   ;(reset.props['onClick'] as () => void)()
-  assert.deepEqual(calls.unset, [['mode']])
+  assert.deepEqual(calls.unset, [['defaultMode']])
 })
 
 test('the card disables its controls when the host document is not writable', () => {
-  const { open } = openCard({ status: 'ready', value: { mode: 'full' }, user: {}, writable: false })
+  const { open } = openCard({ status: 'ready', value: { defaultMode: 'full' }, user: {}, writable: false })
 
   const levels = assertLevels(open, 'Full')
   for (const level of levels) assert.equal(level.props['disabled'], true)
@@ -271,13 +256,13 @@ test('an unavailable namespace renders no trace of the card', () => {
     calls,
   )
 
-  const component = componentFor(registered, 'settings.plugin.item')
+  const component = componentFor(registered, 'plugins.row.config')
   react.reset()
   assert.equal(component(), null)
 })
 
 test('the chrome is class-based, so no state change goes through React style diffing', () => {
-  const { open } = openCard({ status: 'ready', value: { mode: 'lite' }, user: { mode: 'lite' }, writable: true })
+  const { open } = openCard({ status: 'ready', value: { defaultMode: 'lite' }, user: { defaultMode: 'lite' }, writable: true })
 
   // An inline object is what let a removed longhand decompose a border
   // shorthand and blank a deselected pill; classes keep every state change out
@@ -287,7 +272,7 @@ test('the chrome is class-based, so no state change goes through React style dif
     assert.equal(typeof element.props['className'], 'string', `${element.type} carries no class`)
   }
 
-  assert.match(String(open.filter((element) => element.type === 'li')[0]?.props['className']), /dc-card-open/)
+  assert.match(String(open.filter((element) => element.type === 'div')[0]?.props['className']), /dc-page/)
 
   const levels = assertLevels(open, 'Lite')
   const selected = levels.filter((pill) => pill.props['aria-checked'] === true)
@@ -302,7 +287,7 @@ test('the composer chip states the level and vanishes when off or unavailable', 
   const calls = newCalls()
 
   const active = loadBundle(
-    { status: 'ready', value: { mode: 'ultra' }, user: {}, writable: true },
+    { status: 'ready', value: { defaultMode: 'ultra' }, user: {}, writable: true },
     calls,
   )
   const chip = render(active.react, componentFor(active.registered, 'conversation.input.left'))
@@ -312,7 +297,7 @@ test('the composer chip states the level and vanishes when off or unavailable', 
   assert.equal(chip[0]?.children[0], 'Caveman: Ultra')
 
   const off = loadBundle(
-    { status: 'ready', value: { mode: 'off' }, user: { mode: 'off' }, writable: true },
+    { status: 'ready', value: { defaultMode: 'off' }, user: { defaultMode: 'off' }, writable: true },
     calls,
   )
   assert.deepEqual(render(off.react, componentFor(off.registered, 'conversation.input.left')), [])

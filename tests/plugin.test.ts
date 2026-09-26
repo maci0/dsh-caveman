@@ -35,13 +35,17 @@ interface Captured {
 function createHost(options: { failUpdate?: boolean } = {}): {
   ctx: HostContext
   captured: Captured
+  config: { defaultMode: string }
   emit: (event: SessionEventLike) => void
+  emitVolatile: () => void
 } {
   const captured: Captured = {
     sections: [], providers: [], tools: [], commands: [], installs: [], updates: [],
   }
   let base: Record<string, unknown> = {}
   let user: Record<string, unknown> = {}
+  const row = { defaultMode: 'full' }
+  const volatileListeners: Array<() => void> = []
 
   const services = {
     systemPrompt: {
@@ -86,6 +90,7 @@ function createHost(options: { failUpdate?: boolean } = {}): {
         if (options.failUpdate === true) throw new Error('settings document is read-only')
         captured.updates.push({ namespace, patch })
         user = { ...user, ...patch }
+        if (typeof patch['defaultMode'] === 'string') row.defaultMode = patch['defaultMode']
       },
     },
   }
@@ -94,18 +99,23 @@ function createHost(options: { failUpdate?: boolean } = {}): {
 
   const ctx = {
     ...services,
+    fiber: { entry: { options: { id: CAVEMAN_SETTINGS_NAMESPACE } } },
+    get: (name: string): unknown => (name === 'settings' ? services.settings : undefined),
     inject: (_dependencies: readonly string[], callback: (scope: HostContext) => void): void => {
       callback(ctx as unknown as HostContext)
     },
-    on: (_event: string, listener: (session: unknown, event: SessionEventLike) => void): (() => void) => {
-      listeners.push(listener)
+    on: (event: string, listener: (...args: never[]) => void): (() => void) => {
+      if (event === 'loader/volatile-update') volatileListeners.push(listener as () => void)
+      else listeners.push(listener as (session: unknown, event: SessionEventLike) => void)
       return () => {}
     },
   }
   return {
     ctx: ctx as unknown as HostContext,
     captured,
+    config: row,
     emit: (event: SessionEventLike): void => { for (const listener of listeners) listener({}, event) },
+    emitVolatile: (): void => { for (const listener of volatileListeners) listener() },
   }
 }
 
@@ -137,7 +147,7 @@ async function callCommand(host: { captured: Captured }, rawInput: string, index
 
 test('apply mounts the section, provider, tool, command, and settings namespace', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
 
   assert.equal(host.captured.sections[0]?.name, 'caveman')
   assert.equal(host.captured.sections[0]?.order, 700)
@@ -148,20 +158,12 @@ test('apply mounts the section, provider, tool, command, and settings namespace'
   assert.equal(host.captured.providers.length, 1)
   assert.equal((await host.captured.providers[0]?.list())?.length, 14)
 
-  const install = host.captured.installs[0]
-  assert.ok(install)
-  assert.equal(install.namespace, CAVEMAN_SETTINGS_NAMESPACE)
-  assert.deepEqual(install.entry, { mode: 'full' })
-  // The settings service serializes `schema.toJSON()` for the browser half, so
-  // the namespace must carry a real schemastery schema.
-  assert.equal(typeof (install.schema as { toJSON?: unknown }).toJSON, 'function')
-
   assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: full\n\n/)
 })
 
 test('the tool persists a level through the settings document', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
 
   assert.deepEqual(await callTool(host, {}), {
     mode: 'full', previous: 'full', changed: false, active: true,
@@ -169,7 +171,7 @@ test('the tool persists a level through the settings document', async () => {
 
   const switched = await callTool(host, { mode: 'ultra' })
   assert.deepEqual(switched, { mode: 'ultra', previous: 'full', changed: true, active: true })
-  assert.deepEqual(host.captured.updates, [{ namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { mode: 'ultra' } }])
+  assert.deepEqual(host.captured.updates, [{ namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { defaultMode: 'ultra' } }])
   assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: ultra\n\n/)
 
   const off = await callTool(host, { mode: 'off' })
@@ -186,25 +188,25 @@ test('the tool persists a level through the settings document', async () => {
 
 test('wenyan levels persist like every other level', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
 
   const wenyan = await callTool(host, { mode: 'wenyan-full' })
   assert.deepEqual(wenyan, { mode: 'wenyan-full', previous: 'full', changed: true, active: true })
   assert.deepEqual(host.captured.updates, [
-    { namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { mode: 'wenyan-full' } },
+    { namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { defaultMode: 'wenyan-full' } },
   ])
   assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: wenyan-full\n\n/)
 
   // A card write is a committed settings change: the service leaves the source
   // thunk alone and signals the commit through `onChange`.
-  host.captured.installs[0]?.hooks.setSource(() => ({ mode: 'lite' }))
-  host.captured.installs[0]?.hooks.onChange()
+  host.config.defaultMode = 'lite'
+  host.emitVolatile()
   assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: lite\n\n/)
 })
 
 test('a refused settings write still applies the level for this session', async () => {
   const host = createHost({ failUpdate: true })
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
 
   const warnings: string[] = []
   const originalWarn = console.warn
@@ -223,13 +225,13 @@ test('a refused settings write still applies the level for this session', async 
 
 test('the command switches and reports through the UI', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
 
   assert.deepEqual(await callCommand(host, ''), { kind: 'success', text: 'Caveman level: full.' })
   assert.deepEqual(await callCommand(host, ' lite '), {
     kind: 'success', text: 'Caveman level: lite (was full).',
   })
-  assert.deepEqual(host.captured.updates, [{ namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { mode: 'lite' } }])
+  assert.deepEqual(host.captured.updates, [{ namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { defaultMode: 'lite' } }])
 
   assert.deepEqual(await callCommand(host, 'normal mode'), {
     kind: 'success', text: 'Caveman off (was lite). Normal behavior.',
@@ -251,7 +253,8 @@ test('the command switches and reports through the UI', async () => {
 
 test('the tool renders its canonical value for the model', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'lite' })
+  host.config.defaultMode = 'lite'
+  apply(host.ctx, host.config)
   const tool = host.captured.tools[0]
   assert.ok(tool)
 
@@ -267,7 +270,7 @@ test('the tool renders its canonical value for the model', async () => {
 
 test('the tool answers a one-shot level without persisting it', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
 
   assert.deepEqual(await callTool(host, { once: 'ultra' }), {
     mode: 'ultra', previous: 'full', changed: false, active: true, once: 'ultra',
@@ -302,7 +305,7 @@ test('the tool answers a one-shot level without persisting it', async () => {
 
 test('the tool reports session usage only when asked and available', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
   const tool = host.captured.tools[0]
   assert.ok(tool)
 
@@ -431,7 +434,7 @@ test('an absent defaultMode resolves through the documented chain', () => {
 
 test('an aborted tool call bails out before it persists', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
 
   await assert.rejects(
     () => callTool(host, { mode: 'ultra' }, { signal: AbortSignal.abort() } as ToolRunContext),
@@ -478,7 +481,7 @@ function userEvent(text: string, kind = 'user'): SessionEventLike {
 
 test('a "stop caveman" message turns the level off before the turn assembles', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
   assert.match(sectionText(host.captured.sections[0]), /level: full/)
 
   host.emit(userEvent('stop caveman'))
@@ -489,7 +492,7 @@ test('a "stop caveman" message turns the level off before the turn assembles', a
 
   await settle()
   assert.deepEqual(host.captured.updates, [
-    { namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { mode: 'off' } },
+    { namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { defaultMode: 'off' } },
   ])
   // The committed document, not the session-local override, now says off.
   assert.equal(sectionText(host.captured.sections[0]), '')
@@ -504,13 +507,13 @@ test('"normal mode" works the same way', async () => {
 
   await settle()
   assert.deepEqual(host.captured.updates, [
-    { namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { mode: 'off' } },
+    { namespace: CAVEMAN_SETTINGS_NAMESPACE, patch: { defaultMode: 'off' } },
   ])
 })
 
 test('only the human\'s own words may deactivate', async () => {
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
 
   // Injected context rides the same event stream: a skill body or reference
   // that happens to read "normal mode" must not toggle the level.
@@ -541,7 +544,7 @@ test('compress tool and command run the pipeline', async () => {
   const { join } = await import('node:path')
 
   const host = createHost()
-  apply(host.ctx, { defaultMode: 'full' })
+  apply(host.ctx, host.config)
 
   // Skill always listed; tool and command run without any gate.
   const names = (await host.captured.providers[0]?.list())?.map((skill) => skill.name) ?? []

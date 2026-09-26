@@ -124,10 +124,12 @@ export interface HostContext {
   /** Run `callback` once the named services are available. */
   inject(dependencies: readonly string[], callback: (scope: HostContext) => void): unknown
   /** Subscribe to a host event; the returned disposer removes the listener. */
-  on(
-    event: 'session/event',
-    listener: (session: unknown, event: SessionEventLike) => void,
-  ): Disposable
+  on(event: 'session/event', listener: (session: unknown, event: SessionEventLike) => void): Disposable
+  on(event: 'loader/volatile-update', listener: () => void): Disposable
+  /** Read one mounted service. `undefined` when that service is absent. */
+  get(name: 'settings'): SettingsServiceLike | undefined
+  /** Owning fiber, present once the loader mounted this plugin. */
+  readonly fiber?: { readonly entry?: { readonly options?: { readonly id?: string } } }
   readonly systemPrompt: {
     section(section: PromptSectionContribution): Disposable
   }
@@ -159,20 +161,14 @@ export interface SettingsSectionHooksLike {
 /** The slice of the settings service this plugin uses. */
 export interface SettingsServiceLike {
   /**
-   * Register a namespace with the plugin's composition entry as the `base`
-   * layer, falling back to that entry when no provider is mounted.
+   * Merge fields into one profile entry. `ns` is the entry id, not a namespace.
+   * @param ns - profile entry id.
+   * @param patch - fields to merge.
    */
-  installSection(
-    owner: unknown,
-    namespace: string,
-    schema: unknown,
-    entry: unknown,
-    hooks: SettingsSectionHooksLike,
-  ): void
   /**
-   * Deep-merge a plain-object patch into the namespace's user layer and persist it.
-   * @param namespace - a namespace this plugin registered.
-   * @param patch - fields to write; only the user layer is touched.
+   * Merge fields into one profile entry. `ns` is the entry id.
+   * @param ns - profile entry id.
+   * @param patch - fields to write.
    */
-  update(namespace: string, patch: Record<string, unknown>): Promise<void>
+  update(ns: string, patch: Record<string, unknown>): Promise<void>
 }

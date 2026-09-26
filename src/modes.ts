@@ -68,7 +68,7 @@ export function normalizeCommandMode(input: string): CavemanMode | undefined {
 /** Inputs for {@link resolveDefaultMode}, all injectable for tests. */
 interface DefaultModeSources {
   /** Deployment default from this plugin's config field; wins over everything. */
-  readonly configured?: string | undefined
+  readonly configured?: unknown
   /** Environment lookup; defaults to `process.env`. */
   readonly env?: Record<string, string | undefined> | undefined
   /** Parsed upstream config file (`~/.config/caveman/config.json`); lowest config priority. */

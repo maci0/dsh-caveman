@@ -1,6 +1,6 @@
 {
   "name": "dsh-caveman",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
@@ -16,6 +16,7 @@
       "default": "./lib/client.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -29,7 +30,7 @@
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins"
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
       ]
     },
     "compatibility": {
@@ -37,6 +38,8 @@
     }
   },
   "files": [
+    "icon.svg",
+    "locale/*.json",
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
     "skills",
@@ -60,14 +63,14 @@
     "yaml": "2.9.1"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-skill": "*",
-    "@deepseek-ai/dsh-tools": "*",
-    "@deepseek-ai/schemastery": "*",
     "@deepseek-ai/dsh-client-connection": "*",
     "@deepseek-ai/dsh-client-locale": "*",
     "@deepseek-ai/dsh-client-ui-renderer": "*",
     "@deepseek-ai/dsh-client-ui-settings": "*",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "*"
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "*",
+    "@deepseek-ai/dsh-skill": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-skill": {
@@ -104,12 +107,13 @@
     "@deepseek-ai/dsh-skill": "0.1.6-alpha.1",
     "@deepseek-ai/dsh-tools": "0.1.6-alpha.1",
     "@deepseek-ai/dsh-util-values": "0.1.6-alpha.1",
-    "@deepseek-ai/schemastery": "3.18.2",
+    "@deepseek-ai/schemastery": "^3.18.4",
     "@types/node": "^22.20.2",
     "typescript": "^7.0.2"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/maci0/dsh-caveman.git"
-  }
+  },
+  "icon": "./icon.svg"
 }

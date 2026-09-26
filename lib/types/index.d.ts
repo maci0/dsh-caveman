@@ -38,13 +38,21 @@ export declare const name = "caveman";
  * mount a bad level.
  */
 export interface Config {
-    /** Startup level. Absent resolves through the chain, ending at `full`. */
-    readonly defaultMode?: CavemanMode;
+    /** Startup level. Absent resolves through the chain, ending at `full`. Volatile on v0.1.7. */
+    readonly defaultMode?: CavemanMode | {
+        readonly value: CavemanMode | undefined;
+    };
     /** Size cap in bytes for `/caveman-compress`; defaults to 500000. */
     readonly maxFileSize?: number;
 }
 /** Row schema: the accepted levels and the size cap live here. */
-export declare const Config: z<Config>;
+export declare const Config: z<Schemastery.ObjectS<NoInfer<{
+    defaultMode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "plain">;
+    maxFileSize: z<number, number, "defined">;
+}>>, Schemastery.ObjectT<NoInfer<{
+    defaultMode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "plain">;
+    maxFileSize: z<number, number, "defined">;
+}>>, "plain">;
 /**
  * Read the upstream config file's `defaultMode`, ignoring everything that
  * would make startup fail: a missing file, an unreadable file, invalid JSON,

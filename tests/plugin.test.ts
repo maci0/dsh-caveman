@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { apply, Config, readUpstreamConfigFile } from '../src/index.ts'
 import type { Config as ConfigType } from '../src/index.ts'
 import type {
@@ -7,27 +10,25 @@ import type {
   HostContext,
   PromptSectionContribution,
   SessionEventLike,
-  SettingsSectionHooksLike,
   SkillProviderLike,
 } from '../src/host.ts'
+import type { CavemanMode } from '../src/modes.ts'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
-const CAVEMAN_SETTINGS_NAMESPACE = 'caveman'
+// Backups land under `XDG_DATA_HOME`; point it at a directory this suite owns so
+// a compression test never writes outside the test's own tree.
+const backupHome = mkdtempSync(join(tmpdir(), 'caveman-xdg-'))
+process.env['XDG_DATA_HOME'] = backupHome
+after(() => rmSync(backupHome, { recursive: true, force: true }))
 
-interface InstallRecord {
-  readonly namespace: string
-  readonly schema: unknown
-  readonly entry: unknown
-  readonly hooks: SettingsSectionHooksLike
-}
+const CAVEMAN_SETTINGS_NAMESPACE = 'caveman'
 
 interface Captured {
   readonly sections: PromptSectionContribution[]
   readonly providers: SkillProviderLike[]
   readonly tools: ToolDefinition[]
   readonly commands: CommandDefinitionLike[]
-  readonly installs: InstallRecord[]
   readonly updates: { namespace: string; patch: Record<string, unknown> }[]
 }
 
@@ -35,16 +36,14 @@ interface Captured {
 function createHost(options: { failUpdate?: boolean } = {}): {
   ctx: HostContext
   captured: Captured
-  config: { defaultMode: string }
+  config: { defaultMode: CavemanMode }
   emit: (event: SessionEventLike) => void
   emitVolatile: () => void
 } {
   const captured: Captured = {
-    sections: [], providers: [], tools: [], commands: [], installs: [], updates: [],
+    sections: [], providers: [], tools: [], commands: [], updates: [],
   }
-  let base: Record<string, unknown> = {}
-  let user: Record<string, unknown> = {}
-  const row = { defaultMode: 'full' }
+  const row: { defaultMode: CavemanMode } = { defaultMode: 'full' }
   const volatileListeners: Array<() => void> = []
 
   const services = {
@@ -73,24 +72,10 @@ function createHost(options: { failUpdate?: boolean } = {}): {
       },
     },
     settings: {
-      installSection: (
-        _owner: unknown,
-        namespace: string,
-        schema: unknown,
-        entry: unknown,
-        hooks: SettingsSectionHooksLike,
-      ): void => {
-        base = entry as Record<string, unknown>
-        captured.installs.push({ namespace, schema, entry, hooks })
-        // The real service hands over a thunk reading the resolved layers.
-        hooks.setSource(() => ({ ...base, ...user }))
-        hooks.onChange()
-      },
       update: async (namespace: string, patch: Record<string, unknown>): Promise<void> => {
         if (options.failUpdate === true) throw new Error('settings document is read-only')
         captured.updates.push({ namespace, patch })
-        user = { ...user, ...patch }
-        if (typeof patch['defaultMode'] === 'string') row.defaultMode = patch['defaultMode']
+        if (typeof patch['defaultMode'] === 'string') row.defaultMode = patch['defaultMode'] as CavemanMode
       },
     },
   }
@@ -416,10 +401,16 @@ test('apply fails loudly on configuration it cannot honor', () => {
 
 test('an absent defaultMode resolves through the documented chain', () => {
   const host = createHost()
-  // The row schema declares no default, so the field stays absent and the
+  // The row schema declares no default, so the field carries no value and the
   // resolution chain still gets its turn. A schema default would have filled
   // `full` here and silently outranked both remaining sources.
-  assert.deepEqual(Config({}), { maxFileSize: 500000 })
+  const row = Config({})
+  assert.equal(row.maxFileSize, 500000)
+  assert.equal(row.defaultMode?.get(), undefined)
+  // The settings document edits only volatile fields; a plain field here is the
+  // "has no volatile fields" failure the configuration card hits.
+  const dict = (Config as unknown as { dict: Record<string, { meta: { volatile?: boolean } }> }).dict
+  assert.equal(dict['defaultMode']?.meta.volatile, true)
 
   const previous = process.env['CAVEMAN_DEFAULT_MODE']
   process.env['CAVEMAN_DEFAULT_MODE'] = 'wenyan-lite'

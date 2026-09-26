@@ -146,29 +146,12 @@ export interface HostContext {
   readonly sessionProjections?: SessionProjectionsLike
 }
 
-/** Hooks a consumer hands to `settings.installSection`. */
-export interface SettingsSectionHooksLike {
-  /**
-   * Receive the active configuration source: the resolved settings scope while
-   * one is attached, the composition entry otherwise. Called before the
-   * matching `onChange` at attach and at detach.
-   */
-  setSource(current: () => unknown): void
-  /** Re-judge anything derived from the source after an attach, detach, or commit. */
-  onChange(): void
-}
-
 /** The slice of the settings service this plugin uses. */
 export interface SettingsServiceLike {
   /**
    * Merge fields into one profile entry. `ns` is the entry id, not a namespace.
    * @param ns - profile entry id.
    * @param patch - fields to merge.
-   */
-  /**
-   * Merge fields into one profile entry. `ns` is the entry id.
-   * @param ns - profile entry id.
-   * @param patch - fields to write.
    */
   update(ns: string, patch: Record<string, unknown>): Promise<void>
 }

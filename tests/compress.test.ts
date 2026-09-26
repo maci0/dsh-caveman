@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, basename } from 'node:path'
@@ -9,6 +9,12 @@ import { extractCodeBlocks, extractHeadings, extractInlineCodes, extractPaths, e
 import { compressBody, compressLine, isSmaller, maskCodeBlocks, restoreCodeBlocks } from '../src/compress-rules.ts'
 import { backupPathFor, isSensitivePath, writeTextAtomic } from '../src/compress-files.ts'
 import { compressFile } from '../src/compress-pipeline.ts'
+
+// Backups land under `XDG_DATA_HOME`; point it at a directory this suite owns so
+// a compression test never writes outside the test's own tree.
+const backupHome = await mkdtemp(join(tmpdir(), 'caveman-xdg-'))
+process.env['XDG_DATA_HOME'] = backupHome
+after(() => rm(backupHome, { recursive: true, force: true }))
 
 test('detectFileType classifies by extension, name, and content', () => {
   assert.equal(detectFileType('notes.md'), 'natural_language')

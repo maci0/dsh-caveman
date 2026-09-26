@@ -45,12 +45,19 @@ export interface Config {
     /** Size cap in bytes for `/caveman-compress`; defaults to 500000. */
     readonly maxFileSize?: number;
 }
-/** Row schema: the accepted levels and the size cap live here. */
+/**
+ * Row schema: the accepted levels and the size cap live here.
+ *
+ * `defaultMode` is volatile, the only kind of field the settings document
+ * accepts: a level change commits into the running config without remounting
+ * the plugin, and the field still carries no default, so absence keeps flowing
+ * to `resolveDefaultMode`.
+ */
 export declare const Config: z<Schemastery.ObjectS<NoInfer<{
-    defaultMode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "plain">;
+    defaultMode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "volatile">;
     maxFileSize: z<number, number, "defined">;
 }>>, Schemastery.ObjectT<NoInfer<{
-    defaultMode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "plain">;
+    defaultMode: z<"full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "full" | "lite" | "off" | "ultra" | "wenyan-full" | "wenyan-lite" | "wenyan-ultra", "volatile">;
     maxFileSize: z<number, number, "defined">;
 }>>, "plain">;
 /**

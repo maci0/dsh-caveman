@@ -92,10 +92,11 @@ fails while the plugin loads rather than silently doing the wrong thing.
 
 The host half mounts through public Cordis extension points — `systemPrompt.section`,
 `skills.registerProvider`, `tools.register`, `commands.register`,
-`settings.installSection`, `locale.register`, and `session/event` for the message
-switch. The browser half draws its card into the public `settings.plugin.item`
-slot and its chip into `conversation.input.left`, so this plugin needs no client
-change of its own.
+`loader/volatile-update` (the settings document writes the row's volatile
+`defaultMode`), and `session/event` for the message switch. The browser half draws
+its card into the public `plugins.row.config` slot from `configForms`, registers its
+copy through `locale.register`, and draws its chip into `conversation.input.left`, so
+this plugin needs no client change of its own.
 
 The entry point is the built `lib/index.js` (declarations in `lib/types/`); `npm run
 build` regenerates it from `src/`. `lib/client.js` is hand-authored plain JavaScript —

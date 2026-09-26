@@ -7,9 +7,6 @@ import { fileURLToPath } from 'node:url'
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const bundlePath = join(packageRoot, 'lib', 'client.js')
 
-/** Installed version from package.json: the card header must show it. */
-const pkgVersion: string = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).version
-
 interface Element {
   type: unknown
   props: Record<string, unknown>

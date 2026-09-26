@@ -87,9 +87,16 @@ export interface Config {
   readonly maxFileSize?: number
 }
 
-/** Row schema: the accepted levels and the size cap live here. */
+/**
+ * Row schema: the accepted levels and the size cap live here.
+ *
+ * `defaultMode` is volatile, the only kind of field the settings document
+ * accepts: a level change commits into the running config without remounting
+ * the plugin, and the field still carries no default, so absence keeps flowing
+ * to `resolveDefaultMode`.
+ */
 export const Config = z.object({
-  defaultMode: ModeSchema,
+  defaultMode: ModeSchema.volatile(),
   maxFileSize: z.number().default(MAX_FILE_SIZE),
 })
 

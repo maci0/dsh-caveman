@@ -99,10 +99,10 @@ function createHost(options: { failUpdate?: boolean } = {}): {
     ...services,
     fiber: { entry: { options: { id: CAVEMAN_SETTINGS_NAMESPACE } } },
     // The optional seams are served the way a Cordis context serves them:
-    // through the accessor, which is also the shape `apply` has to use.
-    get: (name: string): unknown => name === 'settings'
-      ? services.settings
-      : name === 'sessionProjections' ? services.sessionProjections : undefined,
+    // through the accessor, which is also the shape `apply` has to use. This
+    // host carries no `sessionProjections` seam, so the accessor answers
+    // `undefined` for it, exactly as a Cordis context without the service does.
+    get: (name: string): unknown => name === 'settings' ? services.settings : undefined,
     inject: (_dependencies: readonly string[], callback: (scope: HostContext) => void): void => {
       callback(ctx as unknown as HostContext)
     },

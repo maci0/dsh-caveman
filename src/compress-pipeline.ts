@@ -14,7 +14,7 @@
  * @module dsh-caveman/compress-pipeline
  */
 
-import { existsSync, mkdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { detectFileType } from './compress-detect.ts'
 import { backupPathFor, backupDirFor, isSensitivePath, MAX_FILE_SIZE, readSource, writeBytesAtomic, writeTextAtomic } from './compress-files.ts'
@@ -34,7 +34,16 @@ export type CompressOutcome =
  * @returns the outcome; the file is untouched unless `ok` is true.
  */
 export function compressFile(inputPath: string, maxFileSize: number = MAX_FILE_SIZE): CompressOutcome {
-  const filePath = resolve(inputPath)
+  const requested = resolve(inputPath)
+  // Canonicalize before anything else: `rename` onto a symlink path swaps the
+  // link node for a regular file and leaves the real target untouched, and the
+  // sensitive-path denylist would otherwise be reading the link name.
+  let filePath: string
+  try {
+    filePath = realpathSync(requested)
+  } catch {
+    return { ok: false, reason: `File not found: ${requested}` }
+  }
 
   let stat: ReturnType<typeof statSync>
   try {
@@ -100,7 +109,7 @@ export function compressFile(inputPath: string, maxFileSize: number = MAX_FILE_S
 
   mkdirSync(backupDirFor(filePath), { recursive: true })
   writeBytesAtomic(backupPath, source.raw)
-  writeTextAtomic(filePath, compressed, source.newline)
+  writeTextAtomic(filePath, (source.bom ? '\uFEFF' : '') + compressed, source.newline)
   return {
     ok: true,
     backupPath,

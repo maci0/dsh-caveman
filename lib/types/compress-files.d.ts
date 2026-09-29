@@ -36,13 +36,17 @@ export declare function backupDirFor(filePath: string): string;
  * @returns the `.original.md` backup path.
  */
 export declare function backupPathFor(filePath: string): string;
+/** A write syscall-shaped function: bytes written, possibly fewer than asked. */
+export type WriteCall = (fd: number, buffer: Buffer, offset: number, length: number) => number;
 /**
- * Write bytes atomically: sibling temp file, fsync, rename. Preserves the
+ * Write bytes atomically: sibling temp file, fsync, rename. Loops over short
+ * writes so the temp file is never a truncated prefix of `data`. Preserves the
  * destination's permission bits across the swap.
  * @param filePath - destination path.
  * @param data - bytes to write.
+ * @param write - write syscall seam; defaults to `fs.writeSync`.
  */
-export declare function writeBytesAtomic(filePath: string, data: Buffer): void;
+export declare function writeBytesAtomic(filePath: string, data: Buffer, write?: WriteCall): void;
 /**
  * Write text atomically as UTF-8, preserving the document's line terminator.
  * @param filePath - destination path.
@@ -55,11 +59,17 @@ export interface SourceFile {
     readonly text: string;
     readonly newline: '\n' | '\r\n';
     readonly raw: Buffer;
+    /** True when the file started with a UTF-8 BOM, stripped from `text`. */
+    readonly bom: boolean;
 }
 /**
  * Read a source file strictly as UTF-8. A file that cannot be decoded
  * exactly is refused: the round trip would destroy bytes.
+ *
+ * A leading BOM is detected from the raw bytes and reported separately: the
+ * decoder drops it, and the caller re-attaches it when writing so the byte
+ * survives the round trip.
  * @param filePath - absolute source path.
- * @returns text (LF-normalized), terminator, and raw bytes for the backup.
+ * @returns text (LF-normalized), terminator, raw bytes for the backup, BOM flag.
  */
 export declare function readSource(filePath: string): SourceFile;

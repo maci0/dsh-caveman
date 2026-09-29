@@ -86,7 +86,7 @@ to full sentences.
 | Field | Default | Meaning |
 |---|---|---|
 | `defaultMode` | unset | Startup level. Absent means "ask the chain below". One of the seven levels when set. |
-| `maxFileSize` | `500000` | Size cap in bytes for `/caveman-compress`. Positive whole number, editable from the card, and read on every compress call. |
+| `maxFileSize` | `500000` | Size cap in bytes for `/caveman-compress`. Positive number, editable from the card, and read on every compress call. |
 
 The row schema declares no default for `defaultMode`, so an absent field stays
 absent and `apply` resolves the startup level in this order: the row's
@@ -133,7 +133,7 @@ second copy.
 ## Development
 
 ```sh
-npm install --legacy-peer-deps   # the harness packages are optional peers
+npm install --legacy-peer-deps   # the client packages are optional peers
 npm run build       # tsc -p tsconfig.build.json -> lib/index.js + lib/types/
 npm test            # node --test tests/*.test.ts (Node ^22.19 || >=24, no build step)
 npm run typecheck   # tsc -p tsconfig.json
@@ -142,15 +142,15 @@ npm run sync        # overwrite stale verbatim files (refuses dirty tree w/o --f
 ```
 
 The harness packages this plugin imports at runtime — `@deepseek-ai/dsh-tools`,
-`@deepseek-ai/dsh-skill`, `@deepseek-ai/schemastery` — are **optional peer
-dependencies**, not installed ones; `yaml` is the only real dependency. That
-shape is deliberate. `@deepseek-ai/dsh-tools` keys its runtime scheduler on a
-module-level `Symbol`, so a second physical copy in the profile hands the tool
-layer a different symbol than the host's and every tool call dies with
-`Cannot read properties of undefined (reading 'prepare')`. Peers leave
-resolution to the installation, where exactly one copy exists; a standalone
-clone gets them from `devDependencies`, which is why the local install needs
-`--legacy-peer-deps`.
+`@deepseek-ai/dsh-skill`, `@deepseek-ai/schemastery` — are **dependencies
+pinned to the harness's own versions**, so the profile resolves one physical
+copy; `yaml` is the only non-harness dependency. The pin is deliberate.
+`@deepseek-ai/dsh-tools` keys its runtime scheduler on a module-level `Symbol`,
+so a second physical copy in the profile hands the tool layer a different
+symbol than the host's and every tool call dies with
+`Cannot read properties of undefined (reading 'prepare')`. A standalone clone
+also gets them from `devDependencies`; the local install still needs
+`--legacy-peer-deps` for the optional client peers.
 
 The suite covers level normalization and filtering, the fake-host surface, the skills
 provider, the compress pipeline, and a real Cordis composition mount next to the real

@@ -79,17 +79,27 @@ export function backupPathFor(filePath: string): string {
   return join(backupDirFor(filePath), `${stem}.original.md`)
 }
 
+/** A write syscall-shaped function: bytes written, possibly fewer than asked. */
+export type WriteCall = (fd: number, buffer: Buffer, offset: number, length: number) => number
+
 /**
- * Write bytes atomically: sibling temp file, fsync, rename. Preserves the
+ * Write bytes atomically: sibling temp file, fsync, rename. Loops over short
+ * writes so the temp file is never a truncated prefix of `data`. Preserves the
  * destination's permission bits across the swap.
  * @param filePath - destination path.
  * @param data - bytes to write.
+ * @param write - write syscall seam; defaults to `fs.writeSync`.
  */
-export function writeBytesAtomic(filePath: string, data: Buffer): void {
+export function writeBytesAtomic(filePath: string, data: Buffer, write: WriteCall = writeSync): void {
   const tmp = join(dirname(filePath), `${basename(filePath)}.${randomBytes(8).toString('hex')}.tmp`)
   const fd = openSync(tmp, 'w', 0o600)
   try {
-    writeSync(fd, data)
+    let written = 0
+    while (written < data.length) {
+      const count = write(fd, data, written, data.length - written)
+      if (count <= 0) throw new Error(`Short write on ${filePath}: ${written} of ${data.length} bytes`)
+      written += count
+    }
     fsyncSync(fd)
   } finally {
     closeSync(fd)
@@ -123,13 +133,19 @@ export interface SourceFile {
   readonly text: string
   readonly newline: '\n' | '\r\n'
   readonly raw: Buffer
+  /** True when the file started with a UTF-8 BOM, stripped from `text`. */
+  readonly bom: boolean
 }
 
 /**
  * Read a source file strictly as UTF-8. A file that cannot be decoded
  * exactly is refused: the round trip would destroy bytes.
+ *
+ * A leading BOM is detected from the raw bytes and reported separately: the
+ * decoder drops it, and the caller re-attaches it when writing so the byte
+ * survives the round trip.
  * @param filePath - absolute source path.
- * @returns text (LF-normalized), terminator, and raw bytes for the backup.
+ * @returns text (LF-normalized), terminator, raw bytes for the backup, BOM flag.
  */
 export function readSource(filePath: string): SourceFile {
   const raw = readFileSync(filePath)
@@ -145,8 +161,11 @@ export function readSource(filePath: string): SourceFile {
       + 'Convert the file to UTF-8 first.',
     )
   }
+  // The WHATWG UTF-8 decoder already swallows a leading BOM, so the flag has
+  // to come from the raw bytes; `text` never holds the U+FEFF.
+  const bom = raw.length >= 3 && raw[0] === 0xef && raw[1] === 0xbb && raw[2] === 0xbf
   const crlf = (text.match(/\r\n/g) ?? []).length
   const lf = (text.match(/\n/g) ?? []).length
   const newline = crlf * 2 > lf ? '\r\n' as const : '\n' as const
-  return { text: text.replace(/\r\n/g, '\n').replace(/\r/g, '\n'), newline, raw }
+  return { text: text.replace(/\r\n/g, '\n').replace(/\r/g, '\n'), newline, raw, bom }
 }

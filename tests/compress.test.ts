@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
-import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, rm, symlink, writeFile, readFile } from 'node:fs/promises'
+import { writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, basename } from 'node:path'
 import { detectFileType } from '../src/compress-detect.ts'
 import { parseFrontmatter } from '../src/frontmatter.ts'
 import { extractCodeBlocks, extractHeadings, extractInlineCodes, extractPaths, extractUrls, validate } from '../src/compress-validate.ts'
 import { compressBody, compressLine, isSmaller, maskCodeBlocks, restoreCodeBlocks } from '../src/compress-rules.ts'
-import { backupPathFor, isSensitivePath, writeTextAtomic } from '../src/compress-files.ts'
+import { backupPathFor, isSensitivePath, writeBytesAtomic, writeTextAtomic } from '../src/compress-files.ts'
 import { compressFile } from '../src/compress-pipeline.ts'
 
 // Backups land under `XDG_DATA_HOME`; point it at a directory this suite owns so
@@ -172,6 +173,82 @@ test('compressFile end-to-end: compresses, backs up, refuses twice', async () =>
     assert.match((compressFile(secret) as { reason: string }).reason, /sensitive/)
 
     assert.match((compressFile(join(root, 'missing.md')) as { reason: string }).reason, /not found/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+const PROSE = '# Memory\n\nYou should always make sure to run the tests before you push the code. The extensive suite is very big.\n'
+
+test('compressFile keeps a UTF-8 BOM on the rewritten file', async () => {
+  // Regression: the decoder swallowed the BOM, validation compared the
+  // stripped original, and the rewrite silently dropped the three bytes.
+  const root = await mkdtemp(join(tmpdir(), 'caveman-bom-'))
+  try {
+    const target = join(root, 'bom.md')
+    const bom = Buffer.from([0xef, 0xbb, 0xbf])
+    await writeFile(target, Buffer.concat([bom, Buffer.from(PROSE)]))
+    const outcome = compressFile(target)
+    assert.equal(outcome.ok, true)
+    const after = await readFile(target)
+    assert.deepEqual([...after.subarray(0, 3)], [...bom], 'the BOM survives the rewrite')
+    assert.ok(after.length < Buffer.byteLength(PROSE) + 3, 'the body was actually compressed')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('compressFile follows a symlink instead of replacing it', async () => {
+  // Regression: `resolve` left the link in place, so `rename` swapped the
+  // symlink node for a regular file and the real target kept the original.
+  const root = await mkdtemp(join(tmpdir(), 'caveman-link-'))
+  try {
+    const realDir = join(root, 'real')
+    await mkdir(realDir)
+    const target = join(realDir, 'notes.md')
+    await writeFile(target, PROSE)
+    const link = join(root, 'notes.md')
+    await symlink(target, link)
+
+    const outcome = compressFile(link)
+    assert.equal(outcome.ok, true)
+    assert.equal((await lstat(link)).isSymbolicLink(), true, 'the symlink is not replaced by a regular file')
+    assert.match(await readFile(target, 'utf8'), /^run tests before you push code\./m, 'the real target was compressed in place')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a symlink cannot smuggle a sensitive file past the denylist', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'caveman-link-deny-'))
+  try {
+    const sshDir = join(root, '.ssh')
+    await mkdir(sshDir)
+    const secret = join(sshDir, 'config')
+    await writeFile(secret, PROSE)
+    const link = join(root, 'notes.md')
+    await symlink(secret, link)
+
+    const outcome = compressFile(link)
+    assert.equal(outcome.ok, false)
+    assert.match((outcome as { reason: string }).reason, /sensitive/)
+    assert.equal(await readFile(secret, 'utf8'), PROSE, 'the real file must be untouched')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('writeBytesAtomic writes the whole buffer when the OS reports short writes', async () => {
+  // Regression: the returned byte count of a single `writeSync` was ignored, so
+  // a short write left a truncated temp file — renamed over the user's only copy.
+  const root = await mkdtemp(join(tmpdir(), 'caveman-short-write-'))
+  try {
+    const target = join(root, 'notes.md')
+    const data = Buffer.from('x'.repeat(300))
+    writeBytesAtomic(target, data, (fd, buffer, offset = 0, length = buffer.length - offset) => writeSync(fd, buffer, offset, Math.min(length, 7)))
+    const after = await readFile(target)
+    assert.equal(after.length, data.length, 'every byte reaches the file, not just the first short write')
+    assert.deepEqual(after, data)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

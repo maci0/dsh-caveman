@@ -1,6 +1,6 @@
 {
   "name": "dsh-caveman",
-  "version": "0.12.2",
+  "version": "0.13.0",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
@@ -34,7 +34,7 @@
       ]
     },
     "compatibility": {
-      "dsh": ">=0.1.0-rc.8 <0.2.0"
+      "dsh": ">=0.2.0-rc.2 <0.3.0"
     }
   },
   "files": [
@@ -60,8 +60,8 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-skill": "~0.1.7-rc.2",
-    "@deepseek-ai/dsh-tools": "~0.1.7-rc.2",
+    "@deepseek-ai/dsh-skill": "~0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "~0.2.0-rc.2",
     "@deepseek-ai/schemastery": "^3.18.4",
     "yaml": "2.9.1"
   },
@@ -92,13 +92,13 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/dsh-brand": "0.1.6-alpha.1",
-    "@deepseek-ai/dsh-llm": "0.1.6-alpha.1",
-    "@deepseek-ai/dsh-sandbox": "0.1.6-alpha.1",
-    "@deepseek-ai/dsh-scope": "0.1.6-alpha.1",
-    "@deepseek-ai/dsh-skill": "~0.1.7-rc.2",
-    "@deepseek-ai/dsh-tools": "~0.1.7-rc.2",
-    "@deepseek-ai/dsh-util-values": "0.1.6-alpha.1",
+    "@deepseek-ai/dsh-brand": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-sandbox": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-scope": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-skill": "~0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "~0.2.0-rc.2",
+    "@deepseek-ai/dsh-util-values": "0.2.0-rc.2",
     "@deepseek-ai/schemastery": "^3.18.4",
     "@types/node": "^22.20.2",
     "typescript": "^7.0.2"

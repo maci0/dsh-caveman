@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, basename } from 'node:path'
 import { detectFileType } from '../src/compress-detect.ts'
@@ -120,6 +120,29 @@ test('file helpers refuse sensitive paths and bad encodings', () => {
   })
   assert.deepEqual(parseFrontmatter('plain\n'), { raw: '', data: {}, body: 'plain\n' })
   assert.match(backupPathFor('/a/b/notes.md'), /caveman-compress\/backups\/b\/notes\.original\.md$/)
+})
+
+test('dot-prefixed sensitive directories are refused, not compressed', async () => {
+  // Regression: the component check stripped `.` before matching, so every
+  // dot-prefixed entry in the denylist (`.ssh`, `.gnupg`, `.kube`, …) was
+  // unreachable and a file inside one was rewritten in place.
+  assert.equal(isSensitivePath('/home/u/.ssh/config'), true)
+  assert.equal(isSensitivePath('/home/u/.gnupg/gpg.conf'), true)
+  assert.equal(isSensitivePath('C:\\Users\\u\\.kube\\config'), true)
+
+  const root = await mkdtemp(join(tmpdir(), 'caveman-dot-dir-'))
+  try {
+    const config = join(root, '.ssh', 'config')
+    await mkdir(join(root, '.ssh'), { recursive: true })
+    const original = 'You should really keep this host entry.\n'
+    await writeFile(config, original)
+    const outcome = compressFile(config)
+    assert.equal(outcome.ok, false)
+    assert.match((outcome as { reason: string }).reason, /sensitive/)
+    assert.equal(await readFile(config, 'utf8'), original, 'the file must be untouched')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('compressFile end-to-end: compresses, backs up, refuses twice', async () => {

@@ -43,9 +43,14 @@ const SENSITIVE_NAME_TOKENS = [
  */
 export function isSensitivePath(filePath: string): boolean {
   if (SENSITIVE_BASENAME_REGEX.test(basename(filePath))) return true
-  const parts = filePath.split('/').map((part) => part.toLowerCase().replace(/[_\-.\s]/g, ''))
+  // Match the literal component first: the dot-prefixed denylist entries
+  // (`.ssh`, `.gnupg`, …) only exist with their dot, so the stripped form
+  // below can never reach them.
+  const parts = filePath.split(/[/\\]/).map((part) => part.toLowerCase())
   if (parts.some((part) => SENSITIVE_PATH_COMPONENTS.has(part))) return true
-  return parts.some((part) => SENSITIVE_NAME_TOKENS.some((token) => part.includes(token)))
+  // Token matching keeps the stripped form: `api-key` must read as `apikey`.
+  const flattened = parts.map((part) => part.replace(/[_\-.\s]/g, ''))
+  return flattened.some((part) => SENSITIVE_NAME_TOKENS.some((token) => part.includes(token)))
 }
 
 /** Platform data dir holding out-of-tree backups. */

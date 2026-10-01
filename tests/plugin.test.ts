@@ -598,3 +598,38 @@ test('compress tool and command run the pipeline', async () => {
     kind: 'error', text: 'Usage: /caveman-compress <filepath>',
   })
 })
+
+test('a relative compress path resolves against the session working directory', async () => {
+  const { mkdtemp, rm, writeFile, readFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+
+  const host = createHost()
+  apply(host.ctx, host.config)
+
+  const text = '# Notes\n\nYou should always make sure to run the tests before you push anything.\n'
+  const root = await mkdtemp(join(tmpdir(), 'caveman-relative-'))
+  try {
+    await writeFile(join(root, 'tool.md'), text)
+    await writeFile(join(root, 'command.md'), text)
+    // The agent's session, not the server's launch directory, owns the cwd a
+    // relative path means: the harness's own file tools read it from here.
+    const agent = { session: { header: { cwd: root } } }
+
+    const outcome = await callCompressTool(
+      host,
+      { filepath: 'tool.md' },
+      { agent, signal: new AbortController().signal } as unknown as ToolRunContext,
+    ) as Record<string, unknown>
+    assert.equal(outcome['ok'], true, String(outcome['reason']))
+    assert.match(await readFile(join(root, 'tool.md'), 'utf8'), /run tests before/)
+
+    const command = host.captured.commands[1]
+    assert.ok(command)
+    const result = await command.handler({ rawInput: ' command.md', agent } as Parameters<typeof command.handler>[0])
+    assert.equal(result.kind, 'success', result.text)
+    assert.match(await readFile(join(root, 'command.md'), 'utf8'), /run tests before/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

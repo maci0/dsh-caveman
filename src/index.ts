@@ -23,7 +23,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import type { Volatile } from '@deepseek-ai/cordis'
@@ -43,6 +43,7 @@ import { compressFile } from './compress-pipeline.ts'
 import { MAX_FILE_SIZE } from './compress-files.ts'
 import { parseFrontmatter } from './frontmatter.ts'
 import type {
+  AgentLike,
   CommandInvocationLike,
   CommandResultLike,
   HostContext,
@@ -487,7 +488,7 @@ function createCompressTool(maxFileSize: () => number) {
       filepath: {
         type: 'string',
         required: true,
-        description: 'Absolute path of the file to compress.',
+        description: 'Path of the file to compress; a relative path resolves against the session working directory.',
       },
     },
     output: {
@@ -510,12 +511,26 @@ function createCompressTool(maxFileSize: () => number) {
       if (args.filepath.trim() === '') {
         throw new Error('caveman-compress needs a filepath string.')
       }
-      const outcome = compressFile(args.filepath, maxFileSize())
+      const outcome = compressFile(sessionPath(args.filepath, exec?.agent), maxFileSize())
       // The write is atomic but not free; a cancelled call must not claim it.
       exec?.signal?.throwIfAborted()
       return outcome
     },
   })
+}
+
+/**
+ * Resolve a file path the way the harness's own file tools do: a relative path
+ * means the calling agent's session workspace, not the server's launch
+ * directory. Without a session cwd the path is left for `compressFile` to
+ * resolve against the process cwd.
+ * @param filepath - the path as the model or the human wrote it.
+ * @param agent - the calling agent, when the host supplied one.
+ * @returns the path `compressFile` should open.
+ */
+function sessionPath(filepath: string, agent: AgentLike | undefined): string {
+  const cwd = agent?.session?.header?.cwd
+  return cwd === undefined ? filepath : resolve(cwd, filepath)
 }
 
 /**
@@ -628,7 +643,7 @@ async function handleCompressCommand(
   if (filepath === '') {
     return { kind: 'error', text: 'Usage: /caveman-compress <filepath>' }
   }
-  const outcome = compressFile(filepath, maxFileSize)
+  const outcome = compressFile(sessionPath(filepath, invocation.agent), maxFileSize)
   if (!outcome.ok) return { kind: 'error', text: outcome.reason }
   return {
     kind: 'success',

@@ -54,7 +54,8 @@
     "test": "bun test",
     "typecheck": "bunx --bun tsc -p tsconfig.json",
     "sync:check": "bun scripts/sync-upstream.mjs check",
-    "sync": "bun scripts/sync-upstream.mjs sync"
+    "sync": "bun scripts/sync-upstream.mjs sync",
+    "test:node": "node --test tests/*.test.*"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

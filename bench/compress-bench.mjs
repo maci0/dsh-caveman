@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Fixed-scenario bench for the caveman compress pipeline.
  *
@@ -8,7 +8,7 @@
  * beyond the reported p50/p95.
  *
  * Usage:
- *   node bench/compress-bench.mjs [--kb=256] [--runs=30] [--warmup=5] [--repeat=1]
+ *   bun bench/compress-bench.mjs [--kb=256] [--runs=30] [--warmup=5] [--repeat=1]
  *
  * Prints one JSON object on stdout. Wall clock is reported for the product
  * view; `cpuMicros` is the load-resistant counter the perf test asserts on.

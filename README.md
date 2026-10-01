@@ -107,7 +107,7 @@ its card into the public `plugins.row.config` slot from `configForms`, registers
 copy through `locale.register`, and draws its chip into `conversation.input.left`, so
 this plugin needs no client change of its own.
 
-The entry point is the built `lib/index.js` (declarations in `lib/types/`); `npm run
+The entry point is the built `lib/index.js` (declarations in `lib/types/`); `bun run
 build` regenerates it from `src/`. `lib/client.js` is hand-authored plain JavaScript:
 the client module system serves it as a lazy-CJS factory on `window.__ModuleLoader__`
 because the package exports `./client`, and it is not built. Skills come from
@@ -135,18 +135,20 @@ second copy.
   session-local level (kept when the settings write fails) never reaches them.
 - **Two locales.** The card and the chip ship `en` and `zh`; any other locale
   falls back through the service's own chain.
-- **Host source edits need `npm run build` and a restart**; browser-half edits need a page refresh.
+- **Host source edits need `bun run build` and a restart**; browser-half edits need a page refresh.
 
 ## Development
 
 ```sh
-npm install         # .npmrc sets legacy-peer-deps for the optional client peers
-npm run build       # tsc -p tsconfig.build.json -> lib/index.js + lib/types/
-npm test            # node --test tests/*.test.ts (Node ^22.19 || >=24, no build step)
-npm run typecheck   # tsc -p tsconfig.json
-npm run sync:check  # diff bundled files against upstream main (needs network)
-npm run sync        # overwrite stale verbatim files (refuses dirty tree w/o --force)
+bun install         # the client packages are optional peers and stay uninstalled
+bun run build       # tsc -p tsconfig.build.json -> lib/index.js + lib/types/
+bun test            # every tests/*.test.ts, no build step
+bun run typecheck   # tsc -p tsconfig.json
+bun run sync:check  # diff bundled files against upstream main (needs network)
+bun run sync        # overwrite stale verbatim files (refuses dirty tree w/o --force)
 ```
+
+dsh loads plugins on Node ^22.19.0 || >=24.0.0; development and tests run on bun.
 
 The harness packages this plugin imports at runtime (`@deepseek-ai/dsh-tools`,
 `@deepseek-ai/dsh-skill`, `@deepseek-ai/schemastery`) are **dependencies
@@ -166,7 +168,7 @@ provider, the compress pipeline, and a real Cordis composition mount next to the
 skill registry. `sync:check` exits 1 and lists stale files (2 on a usage or fetch error); `sync` rewrites verbatim
 copies and leaves adapted ones for manual re-adaptation. Both accept `--ref <tag|sha>`
 (default `main`). The network assertion runs only with `DSH_SYNC_CHECK=1`; plain
-`npm test` stays offline. To uninstall, run `dsh plugin --profile web remove dsh-caveman`
+`bun test` stays offline. To uninstall, run `dsh plugin --profile web remove dsh-caveman`
 and drop any `id: caveman` override from `~/.dsh/profiles/<profile>/cordis.patch.yml`.
 
 ## Attribution and license

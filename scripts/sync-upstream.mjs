@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Sync bundled upstream files from JuliusBrussee/caveman.
  *
@@ -13,8 +13,8 @@
  * `UPSTREAM_OVERRIDES` below maps the moved files.
  *
  * Usage:
- *   node scripts/sync-upstream.mjs check [--ref <branch|tag|sha>]
- *   node scripts/sync-upstream.mjs sync [--ref <branch|tag|sha>] [--force]
+ *   bun scripts/sync-upstream.mjs check [--ref <branch|tag|sha>]
+ *   bun scripts/sync-upstream.mjs sync [--ref <branch|tag|sha>] [--force]
  *
  * `check` exits 0 when everything matches, 1 with a file list otherwise.
  * `sync` rewrites stale verbatim files (refusing patched ones) and exits 1

@@ -21,7 +21,9 @@ from [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (MIT):
   opening Settings.
 - **`/caveman-compress <file>`** shrinks a memory file or todo list with local
   rules. No model call, original backed up out of tree. A relative path resolves
-  against the session's working directory.
+  against the session's working directory. The model-facing `caveman-compress`
+  tool only rewrites files inside that workspace (symlinks resolved); the
+  command you type is not confined.
 
 ## Install
 

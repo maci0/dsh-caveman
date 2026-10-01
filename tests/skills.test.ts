@@ -255,3 +255,44 @@ test('the provider settles promptly when the lookup signal is aborted', async ()
   assert.ok(first)
   await assert.rejects(() => provider.get(first, { signal: aborted }), /aborted/i)
 })
+
+test('discoverSkills reports a directory with no instruction file', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'caveman-nofile-'))
+  try {
+    await mkdir(join(root, 'empty'), { recursive: true })
+
+    const warnings: string[] = []
+    assert.deepEqual(await discoverSkills(root, (message) => warnings.push(message)), [])
+    assert.equal(warnings.length, 1)
+    assert.match(warnings[0] ?? '', /cannot read .*SKILL\.md/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a skill named only by its directory loads under that name', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'caveman-dirname-'))
+  try {
+    await mkdir(join(root, 'my-skill'), { recursive: true })
+    await writeFile(
+      join(root, 'my-skill', 'SKILL.md'),
+      '---\ndescription: A description with no name field.\n---\nbody\n',
+    )
+
+    const warnings: string[] = []
+    const provider = createSkillProvider({ skillsDir: root, onWarn: (message) => warnings.push(message) })
+
+    const candidates = await provider.list()
+    assert.deepEqual(candidates.map((candidate) => candidate.name), ['my-skill'])
+
+    const listed = candidates[0]
+    assert.ok(listed)
+    const definition = await provider.get(listed)
+    assert.ok(definition, 'a skill the provider lists must also load')
+    assert.equal(definition.name, 'my-skill')
+    assert.equal(definition.content, 'body')
+    assert.deepEqual(warnings, [])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

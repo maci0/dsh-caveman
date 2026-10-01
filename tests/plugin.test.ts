@@ -633,3 +633,41 @@ test('a relative compress path resolves against the session working directory', 
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('the model-facing compress tool refuses a file outside the session workspace', async () => {
+  const { mkdtemp, mkdir, rm, writeFile, readFile, symlink } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+
+  const host = createHost()
+  apply(host.ctx, host.config)
+
+  const text = '# Notes\n\nYou should always make sure to run the tests before you push anything.\n'
+  const base = await mkdtemp(join(tmpdir(), 'caveman-contain-'))
+  try {
+    const root = join(base, 'workspace')
+    await mkdir(root)
+    const outside = join(base, 'outside.md')
+    await writeFile(outside, text)
+    await symlink(outside, join(root, 'link.md'))
+    const agent = { session: { header: { cwd: root } } }
+    const exec = { agent, signal: new AbortController().signal } as unknown as ToolRunContext
+
+    // A model steered by file content must not rewrite prose elsewhere on the
+    // host: the harness's own write tool is confined to the workspace too.
+    for (const filepath of ['../outside.md', outside, 'link.md']) {
+      const outcome = await callCompressTool(host, { filepath }, exec) as Record<string, unknown>
+      assert.equal(outcome['ok'], false, filepath)
+      assert.match(String(outcome['reason']), /outside the session workspace/, filepath)
+    }
+    assert.equal(await readFile(outside, 'utf8'), text, 'the outside file is untouched')
+
+    // The human command names its own file, wherever it is.
+    const command = host.captured.commands[1]
+    assert.ok(command)
+    const result = await command.handler({ rawInput: ` ${outside}`, agent } as Parameters<typeof command.handler>[0])
+    assert.equal(result.kind, 'success', result.text)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})

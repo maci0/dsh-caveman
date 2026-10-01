@@ -37,6 +37,7 @@ import {
   resolveDefaultMode,
   RUNTIME_MODES,
   type CavemanMode,
+  type ResolvedLevel,
 } from './modes.ts'
 import { createSkillProvider } from './skills.ts'
 import { compressFile } from './compress-pipeline.ts'
@@ -56,6 +57,13 @@ import type {
 
 /** Plugin name as it appears in the loader. */
 export const name = 'caveman'
+
+/**
+ * Route the browser half reads for the level in use and its source. The card
+ * and the chip cannot see the env, the upstream config file, or a
+ * session-local level, so they ask the host instead of the settings document.
+ */
+export const LEVEL_ROUTE = '/caveman/level'
 
 /**
  * Every accepted level as a schema union, shared by the persisted settings and
@@ -165,10 +173,10 @@ export function apply(ctx: HostContext, config: Config): void {
 
   // `<package>/skills`, resolved from this module's own location.
   const skillsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills')
-  const startup = resolveDefaultMode({
-    configured,
-    configFile: readUpstreamConfigFile(),
-  })
+  // The env and the upstream file are read once, at mount; the row is read at
+  // every use, so clearing it falls back to them rather than to its old value.
+  const envLevel = { CAVEMAN_DEFAULT_MODE: process.env['CAVEMAN_DEFAULT_MODE'] }
+  const configFile = readUpstreamConfigFile()
   // Parsed once, at load: the ruleset is filtered per assembly, so the
   // frontmatter must not have to be re-read for every request. A missing body
   // means a broken install: fail while loading rather than injecting a silently
@@ -182,10 +190,15 @@ export function apply(ctx: HostContext, config: Config): void {
   /** Session-local level, used when the profile write cannot hold the level. */
   let override: CavemanMode | undefined
 
-  /** Live row: a committed settings change updates the volatile reference in place. */
-  const configuredMode = (): CavemanMode | undefined => normalizeMode(config.defaultMode.get())
+  /**
+   * The level in use and its source. The row is live: a committed settings
+   * change updates the volatile reference in place.
+   */
+  const activeLevel = (): ResolvedLevel => override !== undefined
+    ? { mode: override, source: 'session' }
+    : resolveDefaultMode({ configured: config.defaultMode.get(), env: envLevel, configFile })
 
-  const activeMode = (): CavemanMode => override ?? configuredMode() ?? startup
+  const activeMode = (): CavemanMode => activeLevel().mode
 
   /**
    * Persist a level through the settings document; false when it cannot hold it.
@@ -277,6 +290,31 @@ export function apply(ctx: HostContext, config: Config): void {
       input: { hint: '<filepath>' },
       handler: async (invocation) => handleCompressCommand(invocation, maxFileSize()),
     })
+  })
+
+  ctx.inject(['webServer', 'connection'], (scope) => {
+    scope.effect(() => scope.webServer.register({
+      kind: 'exact',
+      path: LEVEL_ROUTE,
+      handler: (req, res) => {
+        const rejection = scope.connection.requestRejection(req)
+        if (rejection !== undefined) {
+          res.statusCode = rejection
+          res.end()
+          return
+        }
+        if (req.method !== undefined && req.method !== 'GET') {
+          res.statusCode = 405
+          res.setHeader('allow', 'GET')
+          res.end()
+          return
+        }
+        res.statusCode = 200
+        res.setHeader('content-type', 'application/json; charset=utf-8')
+        res.setHeader('cache-control', 'no-store')
+        res.end(JSON.stringify(activeLevel()))
+      },
+    }), `caveman: GET ${LEVEL_ROUTE}`)
   })
 
   // "stop caveman" / "normal mode" typed as an ordinary message, given the

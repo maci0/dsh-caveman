@@ -26,15 +26,15 @@ test('normalizeCommandMode adds the bare wenyan shorthand', () => {
   assert.equal(normalizeCommandMode('shrug'), undefined)
 })
 
-test('resolveDefaultMode prefers config, then env, then file, then full', () => {
-  assert.equal(resolveDefaultMode({ configured: 'ultra', env: { CAVEMAN_DEFAULT_MODE: 'lite' }, configFile: { defaultMode: 'full' } }), 'ultra')
-  assert.equal(resolveDefaultMode({ configured: 'wenyan-full', env: {} }), 'wenyan-full')
-  assert.equal(resolveDefaultMode({ env: { CAVEMAN_DEFAULT_MODE: 'wenyan-ultra' } }), 'wenyan-ultra')
-  assert.equal(resolveDefaultMode({ configFile: { defaultMode: 'lite' }, env: {} }), 'lite')
-  assert.equal(resolveDefaultMode({ configFile: { defaultMode: 'nonsense' }, env: {} }), 'full')
-  assert.equal(resolveDefaultMode({ env: {} }), 'full')
-  assert.equal(resolveDefaultMode({ env: { CAVEMAN_DEFAULT_MODE: 'nonsense' } }), 'full')
-  assert.equal(resolveDefaultMode({ env: { CAVEMAN_DEFAULT_MODE: 'review' } }), 'full')
+test('resolveDefaultMode prefers config, then env, then file, then full, and names the source', () => {
+  assert.deepEqual(resolveDefaultMode({ configured: 'ultra', env: { CAVEMAN_DEFAULT_MODE: 'lite' }, configFile: { defaultMode: 'full' } }), { mode: 'ultra', source: 'settings' })
+  assert.deepEqual(resolveDefaultMode({ configured: 'wenyan-full', env: {} }), { mode: 'wenyan-full', source: 'settings' })
+  assert.deepEqual(resolveDefaultMode({ env: { CAVEMAN_DEFAULT_MODE: 'wenyan-ultra' } }), { mode: 'wenyan-ultra', source: 'env' })
+  assert.deepEqual(resolveDefaultMode({ configFile: { defaultMode: 'lite' }, env: {} }), { mode: 'lite', source: 'config-file' })
+  assert.deepEqual(resolveDefaultMode({ configFile: { defaultMode: 'nonsense' }, env: {} }), { mode: 'full', source: 'default' })
+  assert.deepEqual(resolveDefaultMode({ env: {} }), { mode: 'full', source: 'default' })
+  assert.deepEqual(resolveDefaultMode({ env: { CAVEMAN_DEFAULT_MODE: 'nonsense' } }), { mode: 'full', source: 'default' })
+  assert.deepEqual(resolveDefaultMode({ env: { CAVEMAN_DEFAULT_MODE: 'review' } }), { mode: 'full', source: 'default' })
 })
 
 test('isDeactivationCommand requires the whole message to be the command', () => {

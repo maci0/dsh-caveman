@@ -2,7 +2,7 @@
 /**
  * Sync bundled upstream files from JuliusBrussee/caveman.
  *
- * Reads `sync.manifest.json` next to this script:
+ * Reads `sync.manifest.json` at the package root:
  * - `verbatim`: byte-identical copies, overwritten on `sync`, diffed on `check`;
  * - `patched`: DSH-adapted files, never overwritten; `check` only reports that
  *   upstream moved, so a human can re-apply the adaptation.
@@ -10,7 +10,7 @@
  * Upstream paths mirror local paths minus the `skills/` prefix quirk:
  * `skills/caveman/SKILL.md` lives at `skills/caveman/SKILL.md` upstream, while
  * `skills/cavecrew/cavecrew-*.md` live at `agents/cavecrew-*.md` upstream.
- * The per-file `upstream` override in the manifest covers the quirk.
+ * `UPSTREAM_OVERRIDES` below maps the moved files.
  *
  * Usage:
  *   node scripts/sync-upstream.mjs check [--ref <branch|tag|sha>]
@@ -20,7 +20,7 @@
  * `sync` rewrites stale verbatim files (refusing patched ones) and exits 1
  * when anything changed, so CI can fail on drift. `--force` also syncs when
  * the working tree is dirty; without it, `sync` refuses to avoid clobbering
- * uncommitted work.
+ * uncommitted work. A usage error or a failed fetch exits 2.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -55,6 +55,7 @@ function parseArgs(argv) {
   for (let i = 3; i < argv.length; i += 1) {
     if (argv[i] === '--ref') {
       ref = argv[i + 1]
+      if (ref === undefined || ref.startsWith('--')) throw new Error('--ref needs a value')
       i += 1
     } else if (argv[i] === '--force') {
       force = true
@@ -89,7 +90,14 @@ function isWorkingTreeClean() {
 }
 
 async function main() {
-  const { command, ref: refOverride, force } = parseArgs(process.argv)
+  let args
+  try {
+    args = parseArgs(process.argv)
+  } catch (error) {
+    console.error(`error: ${error.message}`)
+    process.exit(2)
+  }
+  const { command, ref: refOverride, force } = args
   const manifest = loadManifest()
   const ref = refOverride ?? manifest.ref
   const all = [
@@ -120,7 +128,7 @@ async function main() {
       console.log(`${missing ? 'missing' : 'stale'} [${kind}]: ${file}`)
     }
     if (stale.some((s) => s.kind === 'patched')) {
-      console.log('note: patched files need manual re-adaptation; see README "Upstream sync"')
+      console.log('note: patched files need manual re-adaptation; see README "Development"')
     }
     process.exitCode = 1
     return

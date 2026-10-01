@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -21,6 +21,26 @@ let registration: Registration | undefined
 }
 await import(pathToFileURL(bundlePath).href)
 
+/** Cleanups of every effect a case ran; a polling timer must not outlive the file. */
+const effectCleanups: (() => void)[] = []
+after(() => { for (const cleanup of effectCleanups.splice(0)) cleanup() })
+
+/** What the stubbed host route answers: a JSON body, or `undefined` for a 404. */
+let hostLevel: unknown
+/** Every URL the bundle fetched, in order. */
+const fetched: string[] = []
+;(globalThis as { fetch?: unknown }).fetch = async (url: string): Promise<Response> => {
+  fetched.push(url)
+  return hostLevel === undefined
+    ? new Response('', { status: 404 })
+    : new Response(JSON.stringify(hostLevel), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
+/** Let a fetch the bundle started settle and land in its state. */
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 5; turn += 1) await new Promise((resolve) => { setTimeout(resolve, 0) })
+}
+
 interface Element {
   type: unknown
   props: Record<string, unknown>
@@ -30,6 +50,7 @@ interface Element {
 /** Minimal React stub with stateful hooks, so a click can be re-rendered. */
 function createReactStub() {
   const hooks: unknown[] = []
+  const effectDeps: (readonly unknown[] | undefined)[] = []
   let cursor = 0
   return {
     reset: (): void => { cursor = 0 },
@@ -47,6 +68,16 @@ function createReactStub() {
         hooks[slot] = typeof next === 'function' ? (next as (prev: unknown) => unknown)(hooks[slot]) : next
       }]
     },
+    // Runs the effect when its dependencies change, as React does after commit.
+    useEffect: (effect: () => (() => void) | void, deps?: readonly unknown[]): void => {
+      const slot = cursor
+      cursor += 1
+      const previous = effectDeps[slot]
+      if (previous !== undefined && deps !== undefined && deps.every((dep, index) => Object.is(dep, previous[index]))) return
+      effectDeps[slot] = deps
+      const cleanup = effect()
+      if (typeof cleanup === 'function') effectCleanups.push(cleanup)
+    },
   }
 }
 
@@ -60,7 +91,8 @@ interface Snapshot {
 }
 
 /** Load the bundle the way the client module system does and return its exports. */
-function loadBundle(snapshot: Snapshot, calls: { set: unknown[][]; unset: unknown[][] }) {
+function loadBundle(snapshot: Snapshot, calls: { set: unknown[][]; unset: unknown[][] }, level?: unknown) {
+  hostLevel = level
   const react = createReactStub()
   const scope = {
     subscribe: (): (() => void) => () => {},
@@ -346,4 +378,54 @@ test('the composer chip states the level and vanishes when off or unavailable', 
     calls,
   )
   assert.deepEqual(render(unavailable.react, componentFor(unavailable.registered, 'conversation.input.left')), [])
+})
+
+/** The text of every hint line in a rendered tree. */
+function hints(tree: Element[]): string[] {
+  return tree.filter((element) => element.props['className'] === 'dc-hint').map((element) => String(element.children[0]))
+}
+
+test('the card and the chip show the level the host uses, labelled by its source', async () => {
+  // The settings document carries no level: CAVEMAN_DEFAULT_MODE decided it.
+  const snapshot = { status: 'ready', value: { maxFileSize: 500000 }, user: {}, writable: true }
+  fetched.length = 0
+  const card = loadBundle(snapshot, newCalls(), { mode: 'ultra', source: 'env' })
+  const component = componentFor(card.registered, 'plugins.row.config')
+
+  render(card.react, component)
+  await settle()
+  const tree = render(card.react, component)
+  assert.deepEqual(fetched, ['/caveman/level'])
+  assertLevels(tree, 'Ultra')
+  assert.ok(
+    hints(tree).includes('Set by CAVEMAN_DEFAULT_MODE. Choosing a level here overrides it.'),
+    `no env note among ${JSON.stringify(hints(tree))}`,
+  )
+  card.react.reset()
+  assert.equal(component({ view: 'summary' }), 'Terse-talk mode, level: Ultra (from CAVEMAN_DEFAULT_MODE).')
+
+  const chip = loadBundle(snapshot, newCalls(), { mode: 'ultra', source: 'env' })
+  const indicator = componentFor(chip.registered, 'conversation.input.left')
+  render(chip.react, indicator)
+  await settle()
+  assert.equal(render(chip.react, indicator)[0]?.children[0], 'Caveman: Ultra')
+})
+
+test('a level held only by this session is shown and called out', async () => {
+  const snapshot = { status: 'ready', value: { defaultMode: 'lite' }, user: { defaultMode: 'lite' }, writable: true }
+  const card = loadBundle(snapshot, newCalls(), { mode: 'wenyan-full', source: 'session' })
+  const component = componentFor(card.registered, 'plugins.row.config')
+
+  render(card.react, component)
+  await settle()
+  const tree = render(card.react, component)
+  assertLevels(tree, 'Wenyan-Full')
+  assert.ok(hints(tree).includes('Held for this session only: the settings document did not take it.'))
+
+  const config = loadBundle(snapshot, newCalls(), { mode: 'lite', source: 'config-file' })
+  const fromFile = componentFor(config.registered, 'plugins.row.config')
+  render(config.react, fromFile)
+  await settle()
+  config.react.reset()
+  assert.equal(fromFile({ view: 'summary' }), 'Terse-talk mode, level: Lite (from ~/.config/caveman/config.json).')
 })

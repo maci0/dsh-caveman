@@ -71,8 +71,11 @@ projection: counts only, never a saving.
 | `wenyan-ultra` | Extreme. Ancient scholar on a budget. | yes |
 | `off` | No injection. Normal behavior. | yes |
 
-Every level persists, so once a level is chosen the card, the chip, the tool, and
-`/caveman` agree and the choice survives a restart. Security warnings, irreversible-action
+Every level persists, so the card, the chip, the tool, and `/caveman` agree and
+the choice survives a restart. The card and the chip show the level the host is
+using: one that came from `CAVEMAN_DEFAULT_MODE` or `~/.config/caveman/config.json`
+is labelled as such (choosing a level on the card overrides it), and so is a level
+held only for this session because the settings write failed. Security warnings, irreversible-action
 confirmations, and anything where compression would change the meaning drop back
 to full sentences.
 
@@ -83,10 +86,12 @@ to full sentences.
 | `defaultMode` | unset | Startup level. Absent means "ask the chain below". One of the seven levels when set. |
 | `maxFileSize` | `500000` | Size cap in bytes for `/caveman-compress`. Positive number, editable from the card, and read on every compress call. |
 
-The row schema declares no default for `defaultMode`, so an absent field stays
-absent and `apply` resolves the startup level in this order: the row's
-`defaultMode`, then `CAVEMAN_DEFAULT_MODE`, then
-`~/.config/caveman/config.json`'s `defaultMode`, then `full`. An invalid value
+The row schema declares no default for `defaultMode` and the bundle's row sets
+none, so an absent field stays absent and the level resolves in this order: the
+row's `defaultMode`, then `CAVEMAN_DEFAULT_MODE`, then
+`~/.config/caveman/config.json`'s `defaultMode`, then `full`. The env and the
+file are read once at mount; the row is read at every use, so the card's Reset
+falls back to them. An invalid value
 fails while the plugin loads rather than silently doing the wrong thing.
 
 Override the row from your profile's own `cordis.patch.yml` with a
@@ -102,7 +107,10 @@ The package declares `dsh.bundle`, so `dsh plugin add` appends it to
 The host half mounts through public Cordis extension points: `systemPrompt.section`,
 `skills.registerProvider`, `tools.register`, `commands.register`,
 `loader/volatile-update` (the settings document writes the row's volatile
-`defaultMode`), and `session/event` for the message switch. The browser half draws
+`defaultMode`), `session/event` for the message switch, and `webServer` for
+`GET /caveman/level`, which answers `{ mode, source }` (`settings`, `env`,
+`config-file`, `default`, or `session`) behind the `connection` trust fence. The
+browser half reads that route on every settings change and every 5 seconds, draws
 its card into the public `plugins.row.config` slot from `configForms`, registers its
 copy through `locale.register`, and draws its chip into `conversation.input.left`, so
 this plugin needs no client change of its own.
@@ -129,10 +137,6 @@ second copy.
   agent in the process shares it.
 - **External subagents ignore it.** In-process children inherit the ruleset, but
   `subagent-claude-code`/`subagent-codex` spawn their own CLI with its own prompt.
-- **The card shows the settings document, not the startup chain.** Until a level
-  is chosen, the card and the chip show `full` even when `CAVEMAN_DEFAULT_MODE` or
-  `~/.config/caveman/config.json` picked another startup level, and a
-  session-local level (kept when the settings write fails) never reaches them.
 - **Two locales.** The card and the chip ship `en` and `zh`; any other locale
   falls back through the service's own chain.
 - **Host source edits need `bun run build` and a restart**; browser-half edits need a page refresh.

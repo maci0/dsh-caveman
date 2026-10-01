@@ -14,7 +14,7 @@
  * @module dsh-caveman/compress-pipeline
  */
 
-import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
+import { writeSync, existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { detectFileType } from './compress-detect.ts'
 import { backupPathFor, backupDirFor, isSensitivePath, MAX_FILE_SIZE, readSource, writeBytesAtomic, writeTextAtomic } from './compress-files.ts'
@@ -108,7 +108,7 @@ export function compressFile(inputPath: string, maxFileSize: number = MAX_FILE_S
   }
 
   mkdirSync(backupDirFor(filePath), { recursive: true })
-  writeBytesAtomic(backupPath, source.raw)
+  writeBytesAtomic(backupPath, source.raw, writeSync, true)
   writeTextAtomic(filePath, (source.bom ? '\uFEFF' : '') + compressed, source.newline)
   return {
     ok: true,

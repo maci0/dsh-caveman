@@ -11,7 +11,7 @@
  * @module dsh-caveman/compress-files
  */
 
-import { chmodSync, closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fsyncSync, linkSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -89,31 +89,30 @@ export type WriteCall = (fd: number, buffer: Buffer, offset: number, length: num
  * @param filePath - destination path.
  * @param data - bytes to write.
  * @param write - write syscall seam; defaults to `fs.writeSync`.
+ * @param exclusive - publish a backup only if its destination does not exist.
  */
-export function writeBytesAtomic(filePath: string, data: Buffer, write: WriteCall = writeSync): void {
+export function writeBytesAtomic(filePath: string, data: Buffer, write: WriteCall = writeSync, exclusive = false): void {
   const tmp = join(dirname(filePath), `${basename(filePath)}.${randomBytes(8).toString('hex')}.tmp`)
-  const fd = openSync(tmp, 'w', 0o600)
+  const fd = openSync(tmp, 'wx', 0o600)
   try {
-    let written = 0
-    while (written < data.length) {
-      const count = write(fd, data, written, data.length - written)
-      if (count <= 0) throw new Error(`Short write on ${filePath}: ${written} of ${data.length} bytes`)
-      written += count
-    }
-    fsyncSync(fd)
-  } finally {
-    closeSync(fd)
-  }
-  try {
-    if (existsSync(filePath)) chmodSync(tmp, statSync(filePath).mode & 0o777)
-    renameSync(tmp, filePath)
-  } catch (error) {
     try {
-      unlinkSync(tmp)
-    } catch {
-      // Ignore cleanup failure; the original error is what matters.
+      let written = 0
+      while (written < data.length) {
+        const count = write(fd, data, written, data.length - written)
+        if (count <= 0) throw new Error(`Short write on ${filePath}: ${written} of ${data.length} bytes`)
+        written += count
+      }
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
     }
-    throw error
+    if (exclusive) linkSync(tmp, filePath)
+    else {
+      if (existsSync(filePath)) chmodSync(tmp, statSync(filePath).mode & 0o777)
+      renameSync(tmp, filePath)
+    }
+  } finally {
+    try { unlinkSync(tmp) } catch { /* Original failure, if any, remains authoritative. */ }
   }
 }
 

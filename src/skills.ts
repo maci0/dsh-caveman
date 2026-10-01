@@ -16,6 +16,7 @@ import type {
   SkillDefinition,
   SkillInvocationPolicy,
   SkillLookupOptions,
+  SkillProviderObservation,
   SkillSummary,
 } from '@deepseek-ai/dsh-skill'
 import { parseFrontmatterAsync } from './frontmatter.ts'
@@ -198,16 +199,21 @@ export function createSkillProvider(options: SkillProviderOptions): SkillProvide
   return {
     name: PROVIDER_NAME,
 
-    async list(lookup: SkillLookupOptions = {}): Promise<readonly SkillCandidate[]> {
+    async list(lookup: SkillLookupOptions = {}): Promise<readonly SkillCandidate[] | SkillProviderObservation> {
       lookup.signal?.throwIfAborted()
-      const skills = await discoverSkills(options.skillsDir, options.onWarn)
+      let complete = true
+      const skills = await discoverSkills(options.skillsDir, (message) => {
+        complete = false
+        options.onWarn?.(message)
+      })
       lookup.signal?.throwIfAborted()
-      return skills.map((skill) => ({
+      const candidates = skills.map((skill) => ({
         ...summaryOf(skill),
         rank: BUNDLED_SKILL_RANK,
         locator: skill.path,
         metadata: skill.metadata,
       }))
+      return complete ? candidates : { candidates, complete: false }
     },
 
     async get(

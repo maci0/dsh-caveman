@@ -12,7 +12,7 @@
  *
  * @module dsh-caveman/host
  */
-import type { SkillCandidate, SkillDefinition, SkillLookupOptions } from '@deepseek-ai/dsh-skill';
+import type { SkillCandidate, SkillDefinition, SkillLookupOptions, SkillProviderObservation } from '@deepseek-ai/dsh-skill';
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
 /** Disposer returned by every host registration. */
 type Disposable = () => void;
@@ -27,15 +27,14 @@ export interface PromptSectionContribution {
 }
 /**
  * The workspace-independent slice of the host's `SkillProvider` this plugin
- * implements: flat candidate arrays, and lookup options that stay optional for
- * direct callers. The packaged provider ignores `cwd` and never reports an
- * incomplete observation.
+ * implements: native discovery observations, with lookup options optional for
+ * direct callers. The packaged provider ignores `cwd`.
  */
 export interface SkillProviderLike {
     /** Unique provider name in the registry. */
     readonly name: string;
     /** List candidates for the current lookup, settling promptly on abort. */
-    list(options?: SkillLookupOptions): Promise<readonly SkillCandidate[]>;
+    list(options?: SkillLookupOptions): Promise<readonly SkillCandidate[] | SkillProviderObservation>;
     /** Load a winning candidate's body, or `undefined` when it is gone. */
     get(candidate: SkillCandidate, options?: SkillLookupOptions): Promise<SkillDefinition | undefined>;
 }

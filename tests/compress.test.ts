@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
-import { lstat, mkdir, mkdtemp, rm, symlink, writeFile, readFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, rm, symlink, writeFile, readFile, readdir } from 'node:fs/promises'
 import { writeSync } from 'node:fs'
 import { scratchDir } from './scratch.ts'
 import { join, basename } from 'node:path'
@@ -271,4 +271,27 @@ test('writeTextAtomic preserves newlines and missing basenames', async () => {
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+
+test('a failed atomic write removes its temporary file and preserves the destination', async () => {
+  const root = await mkdtemp(join(scratchDir, 'atomic-fail-'))
+  try {
+    const target = join(root, 'notes.md')
+    await writeFile(target, 'original')
+    assert.throws(() => writeBytesAtomic(target, Buffer.from('replacement'), () => 0), /Short write/)
+    assert.equal(await readFile(target, 'utf8'), 'original')
+    assert.deepEqual(await readdir(root), ['notes.md'])
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('an exclusive backup write never overwrites an existing original', async () => {
+  const root = await mkdtemp(join(scratchDir, 'backup-exclusive-'))
+  try {
+    const target = join(root, 'notes.original.md')
+    writeBytesAtomic(target, Buffer.from('original'), writeSync, true)
+    assert.throws(() => writeBytesAtomic(target, Buffer.from('replacement'), writeSync, true), /EEXIST/)
+    assert.equal(await readFile(target, 'utf8'), 'original')
+    assert.deepEqual(await readdir(root), ['notes.original.md'])
+  } finally { await rm(root, { recursive: true, force: true }) }
 })

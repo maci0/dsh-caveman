@@ -1,3 +1,4 @@
+import { candidatesOf } from './scratch.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -165,7 +166,7 @@ test('discoverSkills reports and skips an unreadable directory', async () => {
 
 test('the provider lists candidates and loads their bodies', async () => {
   const provider = createSkillProvider({ skillsDir })
-  const candidates = await provider.list()
+  const candidates = candidatesOf(await provider.list())
 
   assert.equal(provider.name, 'caveman')
   assert.equal(candidates.length, 14)
@@ -212,7 +213,7 @@ test('the provider projects the two canonical invocation keys and whenToUse', as
   ])
   try {
     const provider = createSkillProvider({ skillsDir: root })
-    const candidates = await provider.list()
+    const candidates = candidatesOf(await provider.list())
     assert.equal(candidates.length, 1)
 
     const probe = candidates[0]
@@ -235,7 +236,7 @@ test('the provider projects the two canonical invocation keys and whenToUse', as
 test('omitted invocation keys default to model- and user-invocable', async () => {
   const root = await writeSkill(['name: probe', 'description: A probe skill.'])
   try {
-    const candidates = await createSkillProvider({ skillsDir: root }).list()
+    const candidates = candidatesOf(await createSkillProvider({ skillsDir: root }).list())
     assert.deepEqual(candidates[0]?.invocation, { modelInvocable: true, userInvocable: true })
     assert.equal(candidates[0]?.whenToUse, undefined)
     assert.deepEqual(candidates[0]?.metadata, {})
@@ -250,7 +251,7 @@ test('the provider settles promptly when the lookup signal is aborted', async ()
 
   await assert.rejects(() => provider.list({ signal: aborted }), /aborted/i)
 
-  const candidates = await provider.list()
+  const candidates = candidatesOf(await provider.list())
   const first = candidates[0]
   assert.ok(first)
   await assert.rejects(() => provider.get(first, { signal: aborted }), /aborted/i)
@@ -282,7 +283,7 @@ test('a skill named only by its directory loads under that name', async () => {
     const warnings: string[] = []
     const provider = createSkillProvider({ skillsDir: root, onWarn: (message) => warnings.push(message) })
 
-    const candidates = await provider.list()
+    const candidates = candidatesOf(await provider.list())
     assert.deepEqual(candidates.map((candidate) => candidate.name), ['my-skill'])
 
     const listed = candidates[0]

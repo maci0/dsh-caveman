@@ -1,3 +1,4 @@
+import { candidatesOf } from './scratch.ts'
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -171,7 +172,7 @@ test('apply mounts the section, provider, tool, command, and settings namespace'
   assert.equal(host.captured.commands[0]?.name, 'caveman')
   assert.equal(host.captured.commands[1]?.name, 'caveman-compress')
   assert.equal(host.captured.providers.length, 1)
-  assert.equal((await host.captured.providers[0]?.list())?.length, 14)
+  assert.equal((candidatesOf(await host.captured.providers[0]?.list()))?.length, 14)
 
   assert.match(sectionText(host.captured.sections[0]), /^CAVEMAN MODE ACTIVE — level: full\n\n/)
 })
@@ -582,7 +583,7 @@ test('compress tool and command run the pipeline', async () => {
   apply(host.ctx, host.config)
 
   // Skill always listed; tool and command run without any gate.
-  const names = (await host.captured.providers[0]?.list())?.map((skill) => skill.name) ?? []
+  const names = (candidatesOf(await host.captured.providers[0]?.list()))?.map((skill) => skill.name) ?? []
   assert.ok(names.includes('caveman-compress'))
 
   const root = await mkdtemp(join(scratchDir, 'caveman-compress-test-'))

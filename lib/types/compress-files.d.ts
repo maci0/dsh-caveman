@@ -45,8 +45,9 @@ export type WriteCall = (fd: number, buffer: Buffer, offset: number, length: num
  * @param filePath - destination path.
  * @param data - bytes to write.
  * @param write - write syscall seam; defaults to `fs.writeSync`.
+ * @param exclusive - publish a backup only if its destination does not exist.
  */
-export declare function writeBytesAtomic(filePath: string, data: Buffer, write?: WriteCall): void;
+export declare function writeBytesAtomic(filePath: string, data: Buffer, write?: WriteCall, exclusive?: boolean): void;
 /**
  * Write text atomically as UTF-8, preserving the document's line terminator.
  * @param filePath - destination path.

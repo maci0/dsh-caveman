@@ -157,8 +157,7 @@ copy; `yaml` is the only non-harness dependency. The pin is deliberate.
 `@deepseek-ai/dsh-tools` keys its runtime scheduler on a module-level `Symbol`,
 so a second physical copy in the profile hands the tool layer a different
 symbol than the host's and every tool call dies with
-`Cannot read properties of undefined (reading 'prepare')`. A standalone clone
-also gets them from `devDependencies`.
+`Cannot read properties of undefined (reading 'prepare')`.
 
 For local development, install the checkout into a profile with
 `dsh plugin --profile <name> add <path-to-checkout>`.

@@ -71,7 +71,7 @@
     "@deepseek-ai/dsh-client-locale": "*",
     "@deepseek-ai/dsh-client-ui-renderer": "*",
     "@deepseek-ai/dsh-client-ui-settings": "*",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "*"
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "*"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-client-connection": {
@@ -86,7 +86,7 @@
     "@deepseek-ai/dsh-client-ui-settings": {
       "optional": true
     },
-    "@deepseek-ai/dsh-client-ui-settings-plugins": {
+    "@deepseek-ai/dsh-client-ui-plugin-manager": {
       "optional": true
     }
   },

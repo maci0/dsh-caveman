@@ -161,7 +161,7 @@ For local development, install the checkout into a profile with
 
 The suite covers level normalization and filtering, the fake-host surface, the skills
 provider, the compress pipeline, and a real Cordis composition mount next to the real
-skill registry. `sync:check` exits 1 and lists stale files; `sync` rewrites verbatim
+skill registry. `sync:check` exits 1 and lists stale files (2 on a usage or fetch error); `sync` rewrites verbatim
 copies and leaves adapted ones for manual re-adaptation. Both accept `--ref <tag|sha>`
 (default `main`). The network assertion runs only with `DSH_SYNC_CHECK=1`; plain
 `npm test` stays offline. To uninstall, run `dsh plugin --profile web remove dsh-caveman`

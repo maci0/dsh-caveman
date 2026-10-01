@@ -85,3 +85,16 @@ test('sync check reports the five known patched drifts and nothing else', { skip
   assert.match(out, /stale \[patched\]: skills\/caveman-stats\/SKILL\.md/)
   assert.doesNotMatch(out, /\[verbatim\]/, 'no verbatim file drifted')
 })
+
+test('a --ref with no value is refused before any fetch', () => {
+  // A trailing `--ref` used to fall back to the manifest ref silently, so a
+  // check meant for a tag quietly compared against main.
+  try {
+    execFileSync('node', [scriptPath, 'check', '--ref'], { cwd: packageRoot, stdio: 'pipe', timeout: 10_000 })
+    assert.fail('check should refuse a --ref without a value')
+  } catch (error) {
+    const result = error as { status?: number; stderr?: Buffer }
+    assert.equal(result.status, 2)
+    assert.match((result.stderr ?? Buffer.of()).toString(), /--ref needs a value/)
+  }
+})

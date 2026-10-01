@@ -40,6 +40,18 @@ export declare function isDeactivationCommand(text: string): boolean;
  * @returns the canonical level, or `undefined` when unrecognized.
  */
 export declare function normalizeCommandMode(input: string): CavemanMode | undefined;
+/**
+ * Where the level in use came from: the row's `defaultMode` (which the
+ * settings document edits), `CAVEMAN_DEFAULT_MODE`, the upstream config file,
+ * the built-in `full`, or a level held only by this process because the
+ * settings document could not take it.
+ */
+export type LevelSource = 'settings' | 'env' | 'config-file' | 'default' | 'session';
+/** A level together with the source that decided it. */
+export interface ResolvedLevel {
+    readonly mode: CavemanMode;
+    readonly source: LevelSource;
+}
 /** Inputs for {@link resolveDefaultMode}, all injectable for tests. */
 interface DefaultModeSources {
     /** Deployment default from this plugin's config field; wins over everything. */
@@ -52,14 +64,14 @@ interface DefaultModeSources {
     } | undefined;
 }
 /**
- * Resolve the level a fresh process starts in.
+ * Resolve the configured level and the source that decided it.
  *
  * Order: this plugin's config field, then `CAVEMAN_DEFAULT_MODE`, then the
  * upstream config file (`~/.config/caveman/config.json`), then `full`.
  * @param sources - injectable overrides for tests.
- * @returns the resolved startup level.
+ * @returns the level and its source.
  */
-export declare function resolveDefaultMode(sources?: DefaultModeSources): CavemanMode;
+export declare function resolveDefaultMode(sources?: DefaultModeSources): ResolvedLevel;
 /**
  * Drop the intensity-table rows and worked examples that belong to other
  * levels.

@@ -31,10 +31,11 @@ interface Captured {
   readonly tools: ToolDefinition[]
   readonly commands: CommandDefinitionLike[]
   readonly updates: { namespace: string; patch: Record<string, unknown> }[]
+  readonly routes: { kind: string; path: string; handler: (req: unknown, res: unknown) => unknown }[]
 }
 
 /** A host that records registrations and emulates the settings document. */
-function createHost(options: { failUpdate?: boolean } = {}): {
+function createHost(options: { failUpdate?: boolean; rejectRequests?: 401 | 403 } = {}): {
   ctx: HostContext
   captured: Captured
   config: ConfigType
@@ -44,7 +45,7 @@ function createHost(options: { failUpdate?: boolean } = {}): {
   emitVolatile: () => void
 } {
   const captured: Captured = {
-    sections: [], providers: [], tools: [], commands: [], updates: [],
+    sections: [], providers: [], tools: [], commands: [], updates: [], routes: [],
   }
   // The live row value. `Volatile<T>` is structurally `{ get(): T }`, so the
   // double below satisfies the exported interface with no cast, and a test can
@@ -91,6 +92,15 @@ function createHost(options: { failUpdate?: boolean } = {}): {
         if (typeof patch['defaultMode'] === 'string') row = patch['defaultMode'] as CavemanMode
       },
     },
+    webServer: {
+      register: (route: Captured['routes'][number]): (() => void) => {
+        captured.routes.push(route)
+        return () => {}
+      },
+    },
+    connection: {
+      requestRejection: (): 401 | 403 | undefined => options.rejectRequests,
+    },
   }
 
   const listeners: Array<(session: unknown, event: SessionEventLike) => void> = []
@@ -98,6 +108,7 @@ function createHost(options: { failUpdate?: boolean } = {}): {
   const ctx = {
     ...services,
     fiber: { entry: { options: { id: CAVEMAN_SETTINGS_NAMESPACE } } },
+    effect: (callback: () => unknown): void => { callback() },
     // The optional seams are served the way a Cordis context serves them:
     // through the accessor, which is also the shape `apply` has to use. This
     // host carries no `sessionProjections` seam, so the accessor answers
@@ -665,4 +676,88 @@ test('the model-facing compress tool refuses a file outside the session workspac
   } finally {
     await rm(base, { recursive: true, force: true })
   }
+})
+
+/** Run the host half's level route once and collect what it answered. */
+async function callLevelRoute(host: { captured: Captured }): Promise<{ status: number; type?: string; body: string }> {
+  const route = host.captured.routes.find((candidate) => candidate.path === '/caveman/level')
+  assert.ok(route, 'the host half registers GET /caveman/level')
+  assert.equal(route.kind, 'exact')
+  const headers: Record<string, string> = {}
+  const res = {
+    statusCode: 200,
+    body: '',
+    setHeader: (name: string, value: string): void => { headers[name.toLowerCase()] = value },
+    end: (body?: string): void => { res.body = body ?? '' },
+  }
+  await route.handler({ method: 'GET', url: '/caveman/level', headers: {} }, res)
+  return { status: res.statusCode, ...(headers['content-type'] === undefined ? {} : { type: headers['content-type'] }), body: res.body }
+}
+
+/** Run `body` with `CAVEMAN_DEFAULT_MODE` set, restoring the previous value. */
+async function withEnvLevel(level: string, body: () => Promise<void>): Promise<void> {
+  const previous = process.env['CAVEMAN_DEFAULT_MODE']
+  process.env['CAVEMAN_DEFAULT_MODE'] = level
+  try {
+    await body()
+  } finally {
+    if (previous === undefined) delete process.env['CAVEMAN_DEFAULT_MODE']
+    else process.env['CAVEMAN_DEFAULT_MODE'] = previous
+  }
+}
+
+test('clearing the row level falls back to the startup chain, not the old row value', async () => {
+  await withEnvLevel('lite', async () => {
+    const host = createHost()
+    host.setDefaultMode('ultra')
+    apply(host.ctx, host.config)
+    assert.match(sectionText(host.captured.sections[0]), /level: ultra\n/)
+
+    // The card's Reset removes the field; the row now says nothing.
+    host.setDefaultMode(undefined)
+    host.emitVolatile()
+    assert.match(sectionText(host.captured.sections[0]), /level: lite\n/)
+  })
+})
+
+test('the level route reports the level in use and where it came from', async () => {
+  await withEnvLevel('ultra', async () => {
+    const host = createHost({ failUpdate: true })
+    host.setDefaultMode(undefined)
+    apply(host.ctx, host.config)
+
+    const fromEnv = await callLevelRoute(host)
+    assert.equal(fromEnv.status, 200)
+    assert.equal(fromEnv.type, 'application/json; charset=utf-8')
+    assert.deepEqual(JSON.parse(fromEnv.body), { mode: 'ultra', source: 'env' })
+
+    host.setDefaultMode('lite')
+    host.emitVolatile()
+    assert.deepEqual(JSON.parse((await callLevelRoute(host)).body), { mode: 'lite', source: 'settings' })
+
+    // The document refuses the write, so the level lives only in this process.
+    await callCommand(host, 'wenyan-full')
+    assert.deepEqual(JSON.parse((await callLevelRoute(host)).body), { mode: 'wenyan-full', source: 'session' })
+  })
+})
+
+test('the level route answers an untrusted request with the trust fence status', async () => {
+  const host = createHost({ rejectRequests: 401 })
+  apply(host.ctx, host.config)
+  const answer = await callLevelRoute(host)
+  assert.equal(answer.status, 401)
+  assert.equal(answer.body, '')
+})
+
+test('the shipped bundle row leaves the startup level to the chain', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const { parse } = await import('yaml')
+  const patch = parse(await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')) as {
+    insert?: { id?: string; config?: Record<string, unknown> }[]
+  }[]
+  const row = patch.flatMap((op) => op.insert ?? []).find((entry) => entry.id === 'caveman')
+  assert.ok(row, 'the bundle inserts the caveman row')
+  // A row value outranks CAVEMAN_DEFAULT_MODE and the upstream config file, so
+  // a packaged `defaultMode` would make both dead letters.
+  assert.equal(row.config?.['defaultMode'], undefined)
 })

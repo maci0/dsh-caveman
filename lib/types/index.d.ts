@@ -28,6 +28,12 @@ import type { HostContext } from './host.ts';
 /** Plugin name as it appears in the loader. */
 export declare const name = "caveman";
 /**
+ * Route the browser half reads for the level in use and its source. The card
+ * and the chip cannot see the env, the upstream config file, or a
+ * session-local level, so they ask the host instead of the settings document.
+ */
+export declare const LEVEL_ROUTE = "/caveman/level";
+/**
  * Configuration received by the plugin, as the loader resolved this row
  * against the schema below: every ordinary field carries its default, and every
  * volatile field arrives as the live reference the settings document writes

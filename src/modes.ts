@@ -65,6 +65,20 @@ export function normalizeCommandMode(input: string): CavemanMode | undefined {
   return normalizeMode(input)
 }
 
+/**
+ * Where the level in use came from: the row's `defaultMode` (which the
+ * settings document edits), `CAVEMAN_DEFAULT_MODE`, the upstream config file,
+ * the built-in `full`, or a level held only by this process because the
+ * settings document could not take it.
+ */
+export type LevelSource = 'settings' | 'env' | 'config-file' | 'default' | 'session'
+
+/** A level together with the source that decided it. */
+export interface ResolvedLevel {
+  readonly mode: CavemanMode
+  readonly source: LevelSource
+}
+
 /** Inputs for {@link resolveDefaultMode}, all injectable for tests. */
 interface DefaultModeSources {
   /** Deployment default from this plugin's config field; wins over everything. */
@@ -76,24 +90,24 @@ interface DefaultModeSources {
 }
 
 /**
- * Resolve the level a fresh process starts in.
+ * Resolve the configured level and the source that decided it.
  *
  * Order: this plugin's config field, then `CAVEMAN_DEFAULT_MODE`, then the
  * upstream config file (`~/.config/caveman/config.json`), then `full`.
  * @param sources - injectable overrides for tests.
- * @returns the resolved startup level.
+ * @returns the level and its source.
  */
-export function resolveDefaultMode(sources: DefaultModeSources = {}): CavemanMode {
+export function resolveDefaultMode(sources: DefaultModeSources = {}): ResolvedLevel {
   const configured = normalizeMode(sources.configured)
-  if (configured !== undefined) return configured
+  if (configured !== undefined) return { mode: configured, source: 'settings' }
 
   const envMode = normalizeMode((sources.env ?? process.env)['CAVEMAN_DEFAULT_MODE'])
-  if (envMode !== undefined) return envMode
+  if (envMode !== undefined) return { mode: envMode, source: 'env' }
 
   const fileMode = normalizeMode(sources.configFile?.defaultMode)
-  if (fileMode !== undefined) return fileMode
+  if (fileMode !== undefined) return { mode: fileMode, source: 'config-file' }
 
-  return DEFAULT_MODE
+  return { mode: DEFAULT_MODE, source: 'default' }
 }
 
 /**

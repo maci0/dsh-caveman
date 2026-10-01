@@ -11,5 +11,3 @@
 - insert:
     - id: caveman
       name: 'dsh-caveman'
-      config:
-        defaultMode: full

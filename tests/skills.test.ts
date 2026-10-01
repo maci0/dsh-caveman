@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { scratchDir } from './scratch.ts'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BUNDLED_SKILL_RANK } from '@deepseek-ai/dsh-skill'
@@ -91,7 +91,7 @@ test('parseFrontmatter tolerates a missing or non-mapping block and lets YAML er
 })
 
 test('discoverSkills skips a file the reader refuses and keeps the rest', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'caveman-skills-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-skills-'))
   try {
     await mkdir(join(root, 'broken'), { recursive: true })
     // Malformed YAML: the reader throws, discovery warns and keeps going.
@@ -195,7 +195,7 @@ test('the provider lists candidates and loads their bodies', async () => {
 
 /** Write one skill directory and return its root. */
 async function writeSkill(frontmatter: readonly string[]): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'caveman-invocation-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-invocation-'))
   await mkdir(join(root, 'probe'), { recursive: true })
   await writeFile(join(root, 'probe', 'SKILL.md'), ['---', ...frontmatter, '---', 'body'].join('\n'))
   return root
@@ -257,7 +257,7 @@ test('the provider settles promptly when the lookup signal is aborted', async ()
 })
 
 test('discoverSkills reports a directory with no instruction file', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'caveman-nofile-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-nofile-'))
   try {
     await mkdir(join(root, 'empty'), { recursive: true })
 
@@ -271,7 +271,7 @@ test('discoverSkills reports a directory with no instruction file', async () => 
 })
 
 test('a skill named only by its directory loads under that name', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'caveman-dirname-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-dirname-'))
   try {
     await mkdir(join(root, 'my-skill'), { recursive: true })
     await writeFile(

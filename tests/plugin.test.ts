@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { scratchDir } from './scratch.ts'
 import { join } from 'node:path'
 import { apply, Config, readUpstreamConfigFile } from '../src/index.ts'
 import type { Config as ConfigType } from '../src/index.ts'
@@ -19,7 +19,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 // Backups land under `XDG_DATA_HOME`; point it at a directory this suite owns so
 // a compression test never writes outside the test's own tree.
-const backupHome = mkdtempSync(join(tmpdir(), 'caveman-xdg-'))
+const backupHome = mkdtempSync(join(scratchDir, 'caveman-xdg-'))
 process.env['XDG_DATA_HOME'] = backupHome
 after(() => rmSync(backupHome, { recursive: true, force: true }))
 
@@ -384,12 +384,11 @@ function createProjectionsHost(totals: {
 
 test('readUpstreamConfigFile tolerates a missing or broken file', async () => {
   const { mkdtemp, rm, writeFile } = await import('node:fs/promises')
-  const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
 
-  assert.equal(readUpstreamConfigFile(join(tmpdir(), 'caveman-no-such-dir', 'config.json')), undefined)
+  assert.equal(readUpstreamConfigFile(join(scratchDir, 'caveman-no-such-dir', 'config.json')), undefined)
 
-  const root = await mkdtemp(join(tmpdir(), 'caveman-config-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-config-'))
   try {
     const missing = join(root, 'missing.json')
     assert.equal(readUpstreamConfigFile(missing), undefined)
@@ -478,13 +477,12 @@ test('an aborted tool call bails out before it persists', async () => {
 
 test('the configured maxFileSize caps the compress tool', async () => {
   const { mkdtemp, rm, writeFile } = await import('node:fs/promises')
-  const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
 
   const host = createHost()
   apply(host.ctx, Config({ defaultMode: 'full', maxFileSize: 20 }))
 
-  const root = await mkdtemp(join(tmpdir(), 'caveman-maxsize-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-maxsize-'))
   try {
     const target = join(root, 'notes.md')
     await writeFile(target, '# Notes\n\nYou should always make sure to run the tests before you push anything.\n')
@@ -567,7 +565,6 @@ test('an already-off level is not written again', async () => {
 
 test('compress tool and command run the pipeline', async () => {
   const { mkdtemp, rm, writeFile, readFile } = await import('node:fs/promises')
-  const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
 
   const host = createHost()
@@ -577,7 +574,7 @@ test('compress tool and command run the pipeline', async () => {
   const names = (await host.captured.providers[0]?.list())?.map((skill) => skill.name) ?? []
   assert.ok(names.includes('caveman-compress'))
 
-  const root = await mkdtemp(join(tmpdir(), 'caveman-compress-test-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-compress-test-'))
   try {
     const target = join(root, 'notes.md')
     await writeFile(target, '# Notes\n\nYou should always make sure to run the tests before you push anything.\n')
@@ -601,14 +598,13 @@ test('compress tool and command run the pipeline', async () => {
 
 test('a relative compress path resolves against the session working directory', async () => {
   const { mkdtemp, rm, writeFile, readFile } = await import('node:fs/promises')
-  const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
 
   const host = createHost()
   apply(host.ctx, host.config)
 
   const text = '# Notes\n\nYou should always make sure to run the tests before you push anything.\n'
-  const root = await mkdtemp(join(tmpdir(), 'caveman-relative-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-relative-'))
   try {
     await writeFile(join(root, 'tool.md'), text)
     await writeFile(join(root, 'command.md'), text)
@@ -636,14 +632,13 @@ test('a relative compress path resolves against the session working directory', 
 
 test('the model-facing compress tool refuses a file outside the session workspace', async () => {
   const { mkdtemp, mkdir, rm, writeFile, readFile, symlink } = await import('node:fs/promises')
-  const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
 
   const host = createHost()
   apply(host.ctx, host.config)
 
   const text = '# Notes\n\nYou should always make sure to run the tests before you push anything.\n'
-  const base = await mkdtemp(join(tmpdir(), 'caveman-contain-'))
+  const base = await mkdtemp(join(scratchDir, 'caveman-contain-'))
   try {
     const root = join(base, 'workspace')
     await mkdir(root)

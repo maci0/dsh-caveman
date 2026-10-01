@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { lstat, mkdir, mkdtemp, rm, symlink, writeFile, readFile } from 'node:fs/promises'
 import { writeSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { scratchDir } from './scratch.ts'
 import { join, basename } from 'node:path'
 import { detectFileType } from '../src/compress-detect.ts'
 import { parseFrontmatter } from '../src/frontmatter.ts'
@@ -13,7 +13,7 @@ import { compressFile } from '../src/compress-pipeline.ts'
 
 // Backups land under `XDG_DATA_HOME`; point it at a directory this suite owns so
 // a compression test never writes outside the test's own tree.
-const backupHome = await mkdtemp(join(tmpdir(), 'caveman-xdg-'))
+const backupHome = await mkdtemp(join(scratchDir, 'caveman-xdg-'))
 process.env['XDG_DATA_HOME'] = backupHome
 after(() => rm(backupHome, { recursive: true, force: true }))
 
@@ -30,7 +30,7 @@ test('detectFileType classifies by extension, name, and content', () => {
 })
 
 test('compressFile skips a non-file path and never recompresses a backup', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'caveman-skip-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-skip-'))
   try {
     const backup = join(root, 'notes.original.md')
     await writeFile(backup, '# Notes\n\nYou should always make sure to run the tests before you push.\n')
@@ -131,7 +131,7 @@ test('dot-prefixed sensitive directories are refused, not compressed', async () 
   assert.equal(isSensitivePath('/home/u/.gnupg/gpg.conf'), true)
   assert.equal(isSensitivePath('C:\\Users\\u\\.kube\\config'), true)
 
-  const root = await mkdtemp(join(tmpdir(), 'caveman-dot-dir-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-dot-dir-'))
   try {
     const config = join(root, '.ssh', 'config')
     await mkdir(join(root, '.ssh'), { recursive: true })
@@ -147,7 +147,7 @@ test('dot-prefixed sensitive directories are refused, not compressed', async () 
 })
 
 test('compressFile end-to-end: compresses, backs up, refuses twice', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'caveman-pipeline-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-pipeline-'))
   try {
     const target = join(root, 'memory.md')
     await writeFile(target, '# Memory\n\nYou should always make sure to run the tests. The extensive suite is very big.\n\n```bash\nnpm test\n```\n')
@@ -183,7 +183,7 @@ const PROSE = '# Memory\n\nYou should always make sure to run the tests before y
 test('compressFile keeps a UTF-8 BOM on the rewritten file', async () => {
   // Regression: the decoder swallowed the BOM, validation compared the
   // stripped original, and the rewrite silently dropped the three bytes.
-  const root = await mkdtemp(join(tmpdir(), 'caveman-bom-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-bom-'))
   try {
     const target = join(root, 'bom.md')
     const bom = Buffer.from([0xef, 0xbb, 0xbf])
@@ -201,7 +201,7 @@ test('compressFile keeps a UTF-8 BOM on the rewritten file', async () => {
 test('compressFile follows a symlink instead of replacing it', async () => {
   // Regression: `resolve` left the link in place, so `rename` swapped the
   // symlink node for a regular file and the real target kept the original.
-  const root = await mkdtemp(join(tmpdir(), 'caveman-link-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-link-'))
   try {
     const realDir = join(root, 'real')
     await mkdir(realDir)
@@ -220,7 +220,7 @@ test('compressFile follows a symlink instead of replacing it', async () => {
 })
 
 test('a symlink cannot smuggle a sensitive file past the denylist', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'caveman-link-deny-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-link-deny-'))
   try {
     const sshDir = join(root, '.ssh')
     await mkdir(sshDir)
@@ -241,7 +241,7 @@ test('a symlink cannot smuggle a sensitive file past the denylist', async () => 
 test('writeBytesAtomic writes the whole buffer when the OS reports short writes', async () => {
   // Regression: the returned byte count of a single `writeSync` was ignored, so
   // a short write left a truncated temp file, renamed over the user's only copy.
-  const root = await mkdtemp(join(tmpdir(), 'caveman-short-write-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-short-write-'))
   try {
     const target = join(root, 'notes.md')
     const data = Buffer.from('x'.repeat(300))
@@ -255,7 +255,7 @@ test('writeBytesAtomic writes the whole buffer when the OS reports short writes'
 })
 
 test('writeTextAtomic preserves newlines and missing basenames', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'caveman-atomic-'))
+  const root = await mkdtemp(join(scratchDir, 'caveman-atomic-'))
   try {
     const target = join(root, 'f.md')
     writeTextAtomic(target, 'a\nb\n', '\r\n')

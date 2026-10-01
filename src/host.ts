@@ -44,10 +44,16 @@ export interface SkillProviderLike {
   get(candidate: SkillCandidate, options?: SkillLookupOptions): Promise<SkillDefinition | undefined>
 }
 
+/** The slice of the calling agent this plugin reads. */
+export interface AgentLike {
+  /** The agent's session; its header carries the workspace a relative path means. */
+  readonly session?: { readonly header?: { readonly cwd?: string | undefined } | undefined } | undefined
+}
+
 /** The slice of a tool execution context this plugin reads. */
 export interface ToolExecLike {
   /** The agent on whose behalf the call runs. */
-  readonly agent?: { readonly session?: unknown } | undefined
+  readonly agent?: AgentLike | undefined
   /** Caller-owned cancellation for this invocation. */
   readonly signal?: AbortSignal | undefined
 }
@@ -73,6 +79,8 @@ export interface SessionProjectionsLike {
 export interface CommandInvocationLike {
   /** Text following the command name, including separator whitespace. */
   readonly rawInput: string
+  /** The agent whose UI received the command. */
+  readonly agent?: AgentLike | undefined
 }
 
 /** Direct-UI outcome of a human command. */

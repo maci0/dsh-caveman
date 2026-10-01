@@ -91,14 +91,14 @@ interface Snapshot {
 }
 
 /** Load the bundle the way the client module system does and return its exports. */
-function loadBundle(snapshot: Snapshot, calls: { set: unknown[][]; unset: unknown[][] }, level?: unknown) {
+function loadBundle(snapshot: Snapshot, calls: { set: unknown[][]; unset: unknown[][] }, level?: unknown, accepted = true) {
   hostLevel = level
   const react = createReactStub()
   const scope = {
     subscribe: (): (() => void) => () => {},
     getSnapshot: (): Snapshot => snapshot,
-    set: async (field: string, value: unknown): Promise<void> => { calls.set.push([field, value]) },
-    unset: async (field: string): Promise<void> => { calls.unset.push([field]) },
+    set: async (field: string, value: unknown): Promise<boolean> => { calls.set.push([field, value]); return accepted },
+    unset: async (field: string): Promise<boolean> => { calls.unset.push([field]); return accepted },
   }
 
   // One dictionary per namespace, keyed by the locale the bundle registers
@@ -326,10 +326,25 @@ test('the size cap is editable, staged, validated, and then written', async () =
   ;(input()?.props['onChange'] as (event: { target: { value: string } }) => void)({ target: { value: '250000' } })
   tree = openPage(react, component)
   ;(save()?.props['onClick'] as () => void)()
+  tree = openPage(react, component)
+  assert.equal(input()?.props['disabled'], true)
+  assert.equal(save()?.props['disabled'], true)
+  ;(save()?.props['onClick'] as () => void)()
   await new Promise((resolve) => { setTimeout(resolve, 0) })
   assert.deepEqual(calls.set, [['maxFileSize', 250000]])
   tree = openPage(react, component)
   assert.equal(input()?.props['value'], '500000', 'the snapshot decides the shown value once the draft clears')
+})
+
+test('refused level and reset writes are reported', async () => {
+  const { registered, react } = loadBundle({ status: 'ready', value: { defaultMode: 'full' }, user: { defaultMode: 'full' }, writable: true }, newCalls(), undefined, false)
+  const component = componentFor(registered, 'plugins.row.config')
+  for (const label of ['Lite', 'Reset']) {
+    const button = buttons(openPage(react, component)).find(button => button.children[0] === label)
+    ;(button?.props['onClick'] as () => void)()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.match(JSON.stringify(openPage(react, component)), /refused/i)
+  }
 })
 
 test('the chrome is class-based, so no state change goes through React style diffing', () => {

@@ -71,7 +71,7 @@ test('sync check reports the five known patched drifts and nothing else', { skip
   // verbatim file fails loudly instead of rotting.
   let out: string
   try {
-    execFileSync('node', [scriptPath, 'check'], { cwd: packageRoot })
+    execFileSync(process.execPath, [scriptPath, 'check'], { cwd: packageRoot })
     assert.fail('check should exit non-zero while patched files drift')
   } catch (error) {
     const result = error as { status?: number; stdout?: Buffer }
@@ -90,7 +90,7 @@ test('a --ref with no value is refused before any fetch', () => {
   // A trailing `--ref` used to fall back to the manifest ref silently, so a
   // check meant for a tag quietly compared against main.
   try {
-    execFileSync('node', [scriptPath, 'check', '--ref'], { cwd: packageRoot, stdio: 'pipe', timeout: 10_000 })
+    execFileSync(process.execPath, [scriptPath, 'check', '--ref'], { cwd: packageRoot, stdio: 'pipe', timeout: 10_000 })
     assert.fail('check should refuse a --ref without a value')
   } catch (error) {
     const result = error as { status?: number; stderr?: Buffer }

@@ -65,13 +65,13 @@ test('patched files document their divergence', () => {
   assert.match(help, /profile row > env var/, 'help states the true default priority')
 })
 
-test('sync check reports the five known patched drifts and nothing else', { skip: process.env.DSH_SYNC_CHECK !== '1' }, () => {
+test('sync check reports the five known patched drifts and nothing else', { skip: process.env.DSH_SYNC_CHECK !== '1', timeout: 90_000 }, () => {
   // Network-dependent: upstream main must be reachable. Asserts the exact
   // steady state (12 verbatim clean, 5 patched stale), so a newly drifted
   // verbatim file fails loudly instead of rotting.
   let out: string
   try {
-    execFileSync(process.execPath, [scriptPath, 'check'], { cwd: packageRoot })
+    execFileSync(process.execPath, [scriptPath, 'check'], { cwd: packageRoot, timeout: 80_000 })
     assert.fail('check should exit non-zero while patched files drift')
   } catch (error) {
     const result = error as { status?: number; stdout?: Buffer }

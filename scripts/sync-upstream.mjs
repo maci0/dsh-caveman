@@ -75,7 +75,7 @@ function upstreamPath(local) {
 
 async function fetchUpstream(repo, ref, path) {
   const url = `${repo.replace(/\/$/, '')}/raw/${ref}/${path}`
-  const response = await fetch(url)
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) })
   if (!response.ok) throw new Error(`fetch failed for ${path}@${ref}: HTTP ${response.status}`)
   return Buffer.from(await response.arrayBuffer())
 }

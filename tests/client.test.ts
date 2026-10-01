@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const bundlePath = join(packageRoot, 'lib', 'client.js')
+
+/** The registration the bundle hands `window.__ModuleLoader__.load`. */
+interface Registration {
+  id: string
+  factory: (require: (id: string) => unknown) => Record<string, unknown>
+}
+
+// The bundle is plain JavaScript in the loader's factory format: importing it
+// runs its one top-level call against this stub. Each case then calls the
+// captured factory, which builds fresh closures, so one import serves them all.
+let registration: Registration | undefined
+;(globalThis as { window?: unknown }).window = {
+  __ModuleLoader__: { load: (entry: Registration): void => { registration = entry } },
+}
+await import(pathToFileURL(bundlePath).href)
 
 interface Element {
   type: unknown
@@ -89,15 +103,12 @@ function loadBundle(snapshot: Snapshot, calls: { set: unknown[][]; unset: unknow
     },
   }
 
-  let loaded: { id: string; factory: (require: (id: string) => unknown) => Record<string, unknown> } | undefined
-  const windowStub = { __ModuleLoader__: { load: (registration: typeof loaded): void => { loaded = registration } } }
+  const loaded = registration
   const requireFn = (id: string): unknown => {
     assert.equal(id, 'react', `the bundle may only require react, got ${id}`)
     return react
   }
 
-  // The bundle is plain JavaScript in the loader's factory format.
-  new Function('window', 'require', readFileSync(bundlePath, 'utf8'))(windowStub, requireFn)
   assert.ok(loaded, 'the bundle registered itself on window.__ModuleLoader__')
   assert.equal(loaded.id, 'dsh-caveman')
 

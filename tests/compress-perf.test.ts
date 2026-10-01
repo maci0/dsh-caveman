@@ -19,19 +19,19 @@
  *   `bench/compress-bench.mjs --kb=2048 --repeat=12`: 94.98e9 now, 115.5e9
  *   before the allocation and regex pass. At this test's 512 KB corpus it is
  *   ~1.00e9 per pass (was ~1.19e9). Not asserted: no `perf` on CI runners.
- * - young-generation allocation: Scavenge count from `--trace-gc` with a
- *   pinned 4 MB semi-space, asserted in the third test. At
- *   `--kb=2048 --repeat=12` it is 715 now and 750 before, over the same 24 MB
- *   of input, with a run-to-run spread of about one collection.
+ * - allocation churn: the number of garbage collections JavaScriptCore logs
+ *   (`BUN_JSC_logGC`, non-concurrent collector) over a fixed bench run,
+ *   asserted in the third test.
  *
  * Reference (recorded, not asserted): AMD Ryzen 9 9950X, Node v26.9.0,
- * ~14.8 ms CPU per pass minimum, ~1.00e9 instructions per pass.
+ * ~14.8 ms CPU per pass minimum, ~1.00e9 instructions per pass. Under bun
+ * 1.4.2 on the same host the minimum reads 17 to 22 ms across runs.
  *
  * @module dsh-caveman/tests/compress-perf
  */
 
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
@@ -74,14 +74,15 @@ function calibrate(): number {
 const MAX_PIPELINE_TO_SCAN_RATIO = 15
 
 /**
- * Ceiling for young-generation collections over the fixed allocation workload
- * (see the third test). Reference is 111–112 for the current pipeline and
- * 137–138 for the one before the allocation pass, measured with a pinned 4 MB
- * semi-space; each collection accounts for the same slice of it, so a
- * re-added per-pass allocation moves the count well before it moves CPU time.
- * The band sits ~15% above the reference, under the old pipeline's floor.
+ * Ceiling for garbage collections over the fixed allocation workload (see the
+ * third test). JavaScriptCore collects once its allocation budget for the
+ * cycle (8 MB on the recording host) is spent, so the count tracks bytes
+ * allocated, and a re-added per-pass allocation moves it before it moves CPU
+ * time. Reference is 40–47 collections across runs on bun 1.4.2 (timer-driven
+ * full collections account for the spread); the band sits ~20% above the
+ * highest reading.
  */
-const MAX_SCAVENGES = 128
+const MAX_COLLECTIONS = 56
 
 /** The bench harness the allocation gate drives as a child process. */
 const benchScript = fileURLToPath(new URL('../bench/compress-bench.mjs', import.meta.url))
@@ -145,32 +146,38 @@ test('compress pipeline output is byte-stable on the fixed corpus', () => {
   assert.equal(digest, REFERENCE_DIGEST, 'compressed bytes changed; update only with a deliberate rule change')
 })
 
-test('compress pipeline young-generation allocation stays inside its budget', () => {
-  // Allocation churn, not time: with a pinned young generation, one scavenge
-  // costs a fixed slice of the semi-space, so the count over a fixed workload
-  // is a work counter: it tracks bytes allocated, not the host's clock. The
-  // in-process equivalent (`perf_hooks` gc entries) is too coarse to gate on:
-  // it separates the current pipeline from the previous one by two events.
-  const result = execFileSync(process.execPath, [
-    '--max-semi-space-size=4',
-    '--trace-gc',
+test('compress pipeline allocation stays inside its collection budget', () => {
+  // Allocation churn, not time: each collection follows a fixed allocation
+  // budget, so the count over a fixed workload tracks bytes allocated, not the
+  // host's clock. The collector runs non-concurrently so its own threads do
+  // not decide when a cycle ends. JavaScriptCore writes the log to stderr.
+  const result = spawnSync(process.execPath, [
     benchScript,
     '--kb=512',
     '--repeat=8',
     '--runs=3',
     '--warmup=2',
-  ], { cwd: packageRoot, encoding: 'utf8' })
+  ], {
+    cwd: packageRoot,
+    encoding: 'utf8',
+    timeout: 120_000,
+    env: { ...process.env, BUN_JSC_useConcurrentGC: '0', BUN_JSC_logGC: '1' },
+  })
+  assert.equal(result.status, 0, `bench failed: ${result.stderr.slice(-2000)}`)
 
-  const scavenges = result.match(/Scavenge/g)?.length ?? 0
+  const collections = result.stderr.match(/=> (Eden|Full)Collection/g)?.length ?? 0
   console.log(
-    `compress-perf: fixed 512 KB workload allocated into ${scavenges} young-generation `
-    + `collections (budget ${MAX_SCAVENGES})`,
+    `compress-perf: fixed 512 KB workload took ${collections} garbage collections `
+    + `(budget ${MAX_COLLECTIONS})`,
   )
 
+  // Self-check: a runtime that ignores the log option reports nothing, and a
+  // zero must not pass as a perfect score.
+  assert.ok(collections > 0, 'the bench logged no garbage collections; the counter is not wired')
   assert.ok(
-    scavenges <= MAX_SCAVENGES,
-    `compress pipeline needed ${scavenges} young-generation collections for a fixed `
-    + `512 KB workload; budget is ${MAX_SCAVENGES}. `
+    collections <= MAX_COLLECTIONS,
+    `compress pipeline needed ${collections} garbage collections for a fixed `
+    + `512 KB workload; budget is ${MAX_COLLECTIONS}. `
     + 'Something on the pass path allocates per line, per block, or per document again; '
     + 'check what the pass allocates before raising the budget.',
   )

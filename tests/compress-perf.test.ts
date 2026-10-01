@@ -78,9 +78,8 @@ const MAX_PIPELINE_TO_SCAN_RATIO = 15
  * third test). JavaScriptCore collects once its allocation budget for the
  * cycle (8 MB on the recording host) is spent, so the count tracks bytes
  * allocated, and a re-added per-pass allocation moves it before it moves CPU
- * time. Reference is 40–47 collections across runs on bun 1.4.2 (timer-driven
- * full collections account for the spread); the band sits ~20% above the
- * highest reading.
+ * time. Reference is 46 collections (39 eden, 7 full) on bun 1.4.2 with heap
+ * sizing pinned to 16 GiB, steady across runs; the band sits ~20% above it.
  */
 const MAX_COLLECTIONS = 56
 
@@ -161,7 +160,10 @@ test('compress pipeline allocation stays inside its collection budget', () => {
     cwd: packageRoot,
     encoding: 'utf8',
     timeout: 120_000,
-    env: { ...process.env, BUN_JSC_useConcurrentGC: '0', BUN_JSC_logGC: '1' },
+    // JavaScriptCore sizes its heap from the host's RAM, so the same workload
+    // collected 46 times here (16 GiB sizing) and 57 on a smaller CI runner.
+    // Pinning the sizing makes the count a property of the code, not the host.
+    env: { ...process.env, BUN_JSC_useConcurrentGC: '0', BUN_JSC_logGC: '1', BUN_JSC_forceRAMSize: String(16 * 1024 ** 3) },
   })
   assert.equal(result.status, 0, `bench failed: ${result.stderr.slice(-2000)}`)
 

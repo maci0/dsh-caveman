@@ -2,12 +2,10 @@
  * Deterministic gate for the frontmatter fast path: a flat block must not load
  * `yaml`.
  *
- * The counter is the module registry, not a clock: after `yaml` has been
- * loaded (statically, by `require`, or by a dynamic `import()`), its files are
- * in `require.cache` (Node routes an ESM import of a CommonJS package through
- * the CommonJS loader). Counting them is load-independent, so the gate holds on
- * a busy machine, and it fails on the pre-fast-path reader, which imported
- * `yaml` at module scope.
+ * The counter is the module registry, not a clock, and it runs in a child
+ * process (`tests/yaml-probe.ts`): `bun test` shares one process across files,
+ * so another file's `yaml` import would otherwise decide the result. It fails
+ * on the pre-fast-path reader, which imported `yaml` at module scope.
  *
  * The last assertion is the self-check: it proves the counter can move, so the
  * three zero assertions before it cannot pass vacuously.
@@ -16,39 +14,40 @@
  */
 
 import assert from 'node:assert/strict'
-import { createRequire } from 'node:module'
+import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
-import { parseFrontmatter, parseFrontmatterAsync } from '../src/frontmatter.ts'
-import { discoverSkills } from '../src/skills.ts'
+import { promisify } from 'node:util'
+import { parseFrontmatter } from '../src/frontmatter.ts'
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const skillsDir = join(packageRoot, 'skills')
-const require = createRequire(import.meta.url)
-
-/** Count the `yaml` package files the process has loaded so far. */
-function yamlModules(): number {
-  return Object.keys(require.cache).filter((path) => /node_modules[/\\]yaml[/\\]/.test(path)).length
-}
-
-const FLAT = '---\nname: probe\ndescription: >\n  One line.\n  Another line.\n---\nbody\n'
+const run = promisify(execFile)
 
 test('a flat frontmatter block never loads yaml', async () => {
-  assert.equal(yamlModules(), 0, 'yaml was already loaded before the first parse')
+  const { stdout } = await run(process.execPath, [join(packageRoot, 'tests', 'yaml-probe.ts')], {
+    cwd: packageRoot,
+    timeout: 60_000,
+  })
+  const probe = JSON.parse(stdout) as {
+    atStart: number
+    afterFlat: number
+    afterSkills: number
+    skills: number
+    firstSkill: string | undefined
+    nested: unknown
+    afterNested: number
+  }
 
-  parseFrontmatter(FLAT)
-  await parseFrontmatterAsync(FLAT)
-  assert.equal(yamlModules(), 0, 'a flat block went through the yaml fallback')
-
-  const skills = await discoverSkills(skillsDir)
-  assert.equal(skills.length, 14, 'every bundled SKILL.md takes the fast path')
-  assert.equal(skills[0]?.name, 'cavecrew')
-
-  const nested = await parseFrontmatterAsync('---\nname: x\nmetadata:\n  owner: me\n---\nbody\n')
-  assert.deepEqual(nested.data['metadata'], { owner: 'me' })
-  assert.ok(yamlModules() > 0, 'the counter must move when the fallback runs')
+  assert.equal(probe.atStart, 0, 'yaml was already loaded before the first parse')
+  assert.equal(probe.afterFlat, 0, 'a flat block went through the yaml fallback')
+  assert.equal(probe.skills, 14, 'the probe read every bundled SKILL.md')
+  assert.equal(probe.afterSkills, 0, 'every bundled SKILL.md takes the fast path')
+  assert.equal(probe.firstSkill, 'cavecrew')
+  assert.deepEqual(probe.nested, { owner: 'me' })
+  assert.ok(probe.afterNested > 0, 'the counter must move when the fallback runs')
 })
 
 test('a bundled SKILL.md parses through the synchronous entry point too', async () => {

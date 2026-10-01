@@ -4,8 +4,8 @@
  *
  * The fast path is a local reader for the flat subset those files use:
  * `key: value` with a plain, single-quoted, or double-quoted scalar, and `>`/`|`
- * block scalars in all three chomping forms. It claims only forms it can prove
- * — a nested map, a list, a flow collection, a key form it does not recognise,
+ * block scalars in all three chomping forms. It claims only forms it can prove.
+ * A nested map, a list, a flow collection, a key form it does not recognise,
  * or any other shape it is not sure about falls through to `yaml`.
  *
  * "Prove" is the whole contract, so the claimed subset is deliberately narrow:
@@ -55,8 +55,8 @@ const SIMPLE_KEY = /^[A-Za-z_][A-Za-z0-9_-]*$/
  * `yaml/dist/schema/core` (`int`, `intOct`, `intHex`, `float`, `floatExp`,
  * `floatNaN`, `bool`, `null`). A plain scalar that matches none of them is
  * provably a `tag:yaml.org,2002:str`, which is the only thing the fast path may
- * read as one. Anything it does match — including leading-zero integers such as
- * `01`, which the schema's bare `[-+]?[0-9]+` reads as `1` — falls back.
+ * read as one. Anything it does match (including leading-zero integers such as
+ * `01`, which the schema's bare `[-+]?[0-9]+` reads as `1`) falls back.
  */
 const NON_STRING = /^(?:~|[Nn]ull|NULL|[Tt]rue|TRUE|[Ff]alse|FALSE|[-+]?[0-9]+|0o[0-7]+|0x[0-9a-fA-F]+|[-+]?(?:\.[0-9]+(?:[eE][-+]?[0-9]+)?|[0-9]+\.[0-9]*(?:[eE][-+]?[0-9]+)?|[0-9]+[eE][-+]?[0-9]+)|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$/
 
@@ -252,8 +252,8 @@ function readBlockScalar(
  *
  * The claim is `SIMPLE_KEY: value` for every non-blank, non-comment line, with
  * a unique key the core schema leaves a string and a value {@link readInline}
- * accepts. Every other shape — a bare scalar, a sequence, an explicit `?` key,
- * an indented line, a whitespace-only line — returns `undefined` so the caller
+ * accepts. Every other shape (a bare scalar, a sequence, an explicit `?` key,
+ * an indented line, a whitespace-only line) returns `undefined` so the caller
  * runs the real parser. A block of nothing but blanks and comments is the one
  * non-mapping shape still claimed: `yaml` resolves it to `null`, which the
  * reader reports as no keys.

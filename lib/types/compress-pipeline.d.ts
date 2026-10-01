@@ -8,7 +8,7 @@
  *
  * Fail-closed throughout: sensitive paths refuse, oversized files refuse,
  * non-UTF-8 refuses, an existing backup aborts, a candidate that is not
- * smaller aborts, and a candidate that fails validation aborts — the live
+ * smaller aborts, and a candidate that fails validation aborts. The live
  * file is written only after a passing validation.
  *
  * @module dsh-caveman/compress-pipeline

@@ -5,7 +5,7 @@
  *
  * Levels mirror upstream (`JuliusBrussee/caveman`, MIT): lite, full, ultra
  * and the three wenyan variants. Unlike ponytail there is no session-only
- * level — every level persists. The one addition over upstream is the
+ * level: every level persists. The one addition over upstream is the
  * `wenyan` shorthand for `wenyan-full`, accepted by the `/caveman` command.
  *
  * @module dsh-caveman/modes
@@ -65,8 +65,8 @@ export declare function resolveDefaultMode(sources?: DefaultModeSources): Cavema
  * levels.
  *
  * Only the intensity table rows and worked examples are mode-specific, and both
- * are keyed by a level name. A bullet whose label is not a level — e.g.
- * "Never drop not/never/no/only/except ..." — is a normal rule and stays
+ * are keyed by a level name. A bullet whose label is not a level (e.g.
+ * "Never drop not/never/no/only/except ...") is a normal rule and stays
  * verbatim; the quoted-value requirement on examples is what keeps a rule that
  * merely starts with a level word from being dropped in every other mode.
  * @param body - markdown of the `caveman` skill, frontmatter already removed.

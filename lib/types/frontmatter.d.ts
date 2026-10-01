@@ -4,8 +4,8 @@
  *
  * The fast path is a local reader for the flat subset those files use:
  * `key: value` with a plain, single-quoted, or double-quoted scalar, and `>`/`|`
- * block scalars in all three chomping forms. It claims only forms it can prove
- * — a nested map, a list, a flow collection, a key form it does not recognise,
+ * block scalars in all three chomping forms. It claims only forms it can prove.
+ * A nested map, a list, a flow collection, a key form it does not recognise,
  * or any other shape it is not sure about falls through to `yaml`.
  *
  * "Prove" is the whole contract, so the claimed subset is deliberately narrow:

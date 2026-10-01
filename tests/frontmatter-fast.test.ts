@@ -3,7 +3,7 @@
  * `yaml`.
  *
  * The counter is the module registry, not a clock: after `yaml` has been
- * loaded — statically, by `require`, or by a dynamic `import()` — its files are
+ * loaded (statically, by `require`, or by a dynamic `import()`), its files are
  * in `require.cache` (Node routes an ESM import of a CommonJS package through
  * the CommonJS loader). Counting them is load-independent, so the gate holds on
  * a busy machine, and it fails on the pre-fast-path reader, which imported

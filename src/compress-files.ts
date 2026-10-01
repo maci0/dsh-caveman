@@ -60,7 +60,7 @@ function backupsBaseDir(): string {
 }
 
 /**
- * Out-of-tree backup dir for a file, keyed by its parent dir name — kept
+ * Out-of-tree backup dir for a file, keyed by its parent dir name, kept
  * outside the source tree so skill auto-loaders don't re-ingest backups.
  * @param filePath - absolute source path.
  * @returns the backup directory.

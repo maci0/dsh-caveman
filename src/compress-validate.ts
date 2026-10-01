@@ -87,8 +87,8 @@ export function extractInlineCodes(text: string): string[] {
   // Blank the fenced/marker lines in place and join once: fence bodies never
   // contribute inline spans, and the join keeps a backtick span that straddles
   // a blanked block byte-identical to the old two-pass form. One walk does both
-  // blankings — it opens a span exactly where a forward fence scan would and
-  // skips to the closer, then applies the marker test outside a span — instead
+  // blankings: it opens a span exactly where a forward fence scan would and
+  // skips to the closer, then applies the marker test outside a span, instead
   // of collecting span tuples and walking the lines twice.
   const lines = text.split('\n')
   let index = 0

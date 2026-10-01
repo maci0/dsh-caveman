@@ -3,7 +3,7 @@
  * Fixed-scenario bench for the caveman compress pipeline.
  *
  * Scenario: one deterministic markdown corpus (see `markdown-corpus.mjs`),
- * passed through the same helpers `compressFile` calls — frontmatter parse,
+ * passed through the same helpers `compressFile` calls: frontmatter parse,
  * `compressBody`, `validate`. No filesystem, no network, no clock dependency
  * beyond the reported p50/p95.
  *

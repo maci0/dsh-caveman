@@ -345,7 +345,7 @@ test('the tool reports session usage only when asked and available', async () =>
     mode: 'full', previous: 'full', changed: false, active: true,
     usage: { input: 100, output: 40, cacheRead: 500, cacheWrite: 10 },
   }), [
-    { type: 'text', text: 'Caveman level: full. The ruleset is injected into every request. Session usage so far — input 100, output 40, cache read 500, cache write 10. Savings unknown without a measured comparison.' },
+    { type: 'text', text: 'Caveman level: full. The ruleset is injected into every request. Session usage so far: input 100, output 40, cache read 500, cache write 10. Savings unknown without a measured comparison.' },
   ])
 })
 
@@ -370,7 +370,7 @@ function createProjectionsHost(totals: {
       const scope = {
         ...(host.ctx as unknown as Record<string, unknown>),
         // A real Cordis context serves an optional service through the accessor
-        // only — reading it as a property is what throws there.
+        // only: reading it as a property is what throws there.
         get: (name: string): unknown => name === 'sessionProjections'
           ? projections
           : (host.ctx as unknown as { get(name: string): unknown }).get(name),

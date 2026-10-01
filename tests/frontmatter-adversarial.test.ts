@@ -5,7 +5,7 @@
  * same way; everything else must fall back to the real parser. These are the
  * inputs where a previous version claimed a block it could not prove, so each
  * one is parsed by the reader under test and by `yaml` over the same regex, and
- * the two results are compared with `deepStrictEqual` — including the throws, so
+ * the two results are compared with `deepStrictEqual`, including the throws, so
  * a block `yaml` rejects must still be rejected rather than silently flattened.
  *
  * `yaml` is imported here as the oracle only. `src/frontmatter.ts` must never
@@ -28,8 +28,8 @@ function reference(source: string): { raw: string; data: Readonly<Record<string,
   if (match === null) return { raw: '', data: {}, body: text }
   const raw = match[0]
   const body = text.slice(raw.length).replace(/\r\n/g, '\n')
-  // `logLevel: 'error'` keeps `parse`'s exact semantics — a real parse failure
-  // still throws, multiple documents still throw — while dropping the advisory
+  // `logLevel: 'error'` keeps `parse`'s exact semantics (a real parse failure
+  // still throws, multiple documents still throw) while dropping the advisory
   // warnings the deliberately odd scalars below would print to stderr.
   const parsed: unknown = yamlParse(match[1] ?? '', { logLevel: 'error' })
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return { raw, data: {}, body }
@@ -178,8 +178,8 @@ function words(alphabet: readonly string[], maxLength: number): string[] {
 /**
  * Run `subject` with `process.emitWarning` muted.
  *
- * `yaml` reports advisories — an ambiguous `&`/`*` anchor, a collection-valued
- * key — through `process.emitWarning`, both from the oracle and from the
+ * `yaml` reports advisories (an ambiguous `&`/`*` anchor, a collection-valued
+ * key) through `process.emitWarning`, both from the oracle and from the
  * production fallback the fast path hands those tokens to. The boundary alphabet
  * below is chosen to trip them, so they are muted for the sweep; no assertion
  * depends on a warning, and the mute is restored afterwards.

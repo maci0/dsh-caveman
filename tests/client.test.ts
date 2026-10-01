@@ -216,7 +216,7 @@ test('the card renders collapsed, naming the plugin and the current level', () =
   const tree = render(react, component)
 
   react.reset()
-  assert.equal(component({ view: 'summary' }), 'Terse-talk mode — level: Lite.')
+  assert.equal(component({ view: 'summary' }), 'Terse-talk mode, level: Lite.')
   const levels = assertLevels(tree, 'Lite')
   assert.equal(levels.length, 7)
 })

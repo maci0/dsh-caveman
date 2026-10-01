@@ -240,7 +240,7 @@ test('a symlink cannot smuggle a sensitive file past the denylist', async () => 
 
 test('writeBytesAtomic writes the whole buffer when the OS reports short writes', async () => {
   // Regression: the returned byte count of a single `writeSync` was ignored, so
-  // a short write left a truncated temp file — renamed over the user's only copy.
+  // a short write left a truncated temp file, renamed over the user's only copy.
   const root = await mkdtemp(join(tmpdir(), 'caveman-short-write-'))
   try {
     const target = join(root, 'notes.md')

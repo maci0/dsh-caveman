@@ -1,5 +1,5 @@
 /**
- * dsh-caveman — Caveman terse-talk mode, as a DeepSeek Harness plugin.
+ * dsh-caveman: Caveman terse-talk mode, as a DeepSeek Harness plugin.
  *
  * Four capabilities, all mounted through public Cordis extension points:
  *
@@ -47,8 +47,8 @@ export interface Config {
  *
  * Both fields are volatile, the only kind the settings document accepts: a
  * change commits into the running config without remounting the plugin. Each is
- * read at the moment it is used — the level at every prompt assembly, the size
- * cap at every compress call — so an edit from the Plugins card takes effect on
+ * read at the moment it is used (the level at every prompt assembly, the size
+ * cap at every compress call), so an edit from the Plugins card takes effect on
  * the next use rather than on a restart.
  *
  * `defaultMode` carries no default, so absence keeps flowing to

@@ -57,11 +57,6 @@ import type {
 export const name = 'caveman'
 
 /**
- * Settings namespace the browser card edits — the join key between this host
- * half and `lib/client.js`. The card registers into `plugins.item`
- * under the same id, and the Plugins page pairs the two without knowing what it means.
- */
-/**
  * Every accepted level as a schema union, shared by the persisted settings and
  * the plugin row so the accepted set is declared once.
  */
@@ -332,9 +327,6 @@ function readSessionUsage(
   scope: HostContext,
   exec: ToolExecLike | undefined,
 ): SessionUsage | undefined {
-  // Read through the accessor: `sessionProjections` is an optional seam, and a
-  // Cordis context throws on a property access for a service it does not
-  // provide, which would turn "no usage available" into a failed tool call.
   // Read through the accessor: `sessionProjections` is an optional seam, and a
   // Cordis context throws on a property access for a service it does not
   // provide, which would turn "no usage available" into a failed tool call.

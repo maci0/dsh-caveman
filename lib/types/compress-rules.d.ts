@@ -3,7 +3,7 @@
  *
  * This replaces the `callClaude` half of
  * `skills/caveman-compress/scripts/compress.py` (MIT, © JuliusBrussee),
- * which this plugin deliberately does not port — shipping file bytes to a
+ * which this plugin deliberately does not port: shipping file bytes to a
  * third-party model for a local rewrite is the "dumb feature" this port
  * leaves out. Everything else (detect, validate, file handling) is ported
  * faithfully; only the rewrite step is local and rule-based.
@@ -23,7 +23,7 @@
  * per line: a document with no code returns the input string itself, and a
  * document with three blocks pushes a handful of segments rather than tens of
  * thousands of line references and then joins them all. The result is
- * identical — each segment is a run of whole lines and the join puts the same
+ * identical: each segment is a run of whole lines and the join puts the same
  * `\n` separators back.
  * @param text - markdown body.
  * @returns masked text plus the blocks for restoration.

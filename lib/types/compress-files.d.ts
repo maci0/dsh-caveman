@@ -24,7 +24,7 @@ export declare const MAX_FILE_SIZE = 500000;
  */
 export declare function isSensitivePath(filePath: string): boolean;
 /**
- * Out-of-tree backup dir for a file, keyed by its parent dir name — kept
+ * Out-of-tree backup dir for a file, keyed by its parent dir name, kept
  * outside the source tree so skill auto-loaders don't re-ingest backups.
  * @param filePath - absolute source path.
  * @returns the backup directory.

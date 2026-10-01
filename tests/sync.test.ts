@@ -67,7 +67,7 @@ test('patched files document their divergence', () => {
 
 test('sync check reports the five known patched drifts and nothing else', { skip: process.env.DSH_SYNC_CHECK !== '1' }, () => {
   // Network-dependent: upstream main must be reachable. Asserts the exact
-  // steady state — 12 verbatim clean, 5 patched stale — so a newly drifted
+  // steady state (12 verbatim clean, 5 patched stale), so a newly drifted
   // verbatim file fails loudly instead of rotting.
   let out: string
   try {

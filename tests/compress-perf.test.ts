@@ -2,7 +2,7 @@
  * Deterministic perf gate for the compress pipeline.
  *
  * Metric: `process.cpuUsage()` delta per full pipeline pass over a fixed
- * 512 KB corpus (see `bench/markdown-corpus.mjs`) — CPU time, not wall clock,
+ * 512 KB corpus (see `bench/markdown-corpus.mjs`): CPU time, not wall clock,
  * so descheduling and I/O wait do not move it. Warm up first, then take the
  * minimum of N measured passes: the minimum is the run least disturbed by
  * other work on the machine, which makes it the most reproducible sample.
@@ -16,7 +16,7 @@
  * is recorded here because the tool behind it is not on every runner:
  *
  * - instructions retired: `perf stat -e instructions` around
- *   `bench/compress-bench.mjs --kb=2048 --repeat=12` — 94.98e9 now, 115.5e9
+ *   `bench/compress-bench.mjs --kb=2048 --repeat=12`: 94.98e9 now, 115.5e9
  *   before the allocation and regex pass. At this test's 512 KB corpus it is
  *   ~1.00e9 per pass (was ~1.19e9). Not asserted: no `perf` on CI runners.
  * - young-generation allocation: Scavenge count from `--trace-gc` with a
@@ -148,7 +148,7 @@ test('compress pipeline output is byte-stable on the fixed corpus', () => {
 test('compress pipeline young-generation allocation stays inside its budget', () => {
   // Allocation churn, not time: with a pinned young generation, one scavenge
   // costs a fixed slice of the semi-space, so the count over a fixed workload
-  // is a work counter — it tracks bytes allocated, not the host's clock. The
+  // is a work counter: it tracks bytes allocated, not the host's clock. The
   // in-process equivalent (`perf_hooks` gc entries) is too coarse to gate on:
   // it separates the current pipeline from the previous one by two events.
   const result = execFileSync(process.execPath, [
@@ -171,7 +171,7 @@ test('compress pipeline young-generation allocation stays inside its budget', ()
     scavenges <= MAX_SCAVENGES,
     `compress pipeline needed ${scavenges} young-generation collections for a fixed `
     + `512 KB workload; budget is ${MAX_SCAVENGES}. `
-    + 'Something on the pass path allocates per line, per block, or per document again — '
+    + 'Something on the pass path allocates per line, per block, or per document again; '
     + 'check what the pass allocates before raising the budget.',
   )
 })

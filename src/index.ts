@@ -1,5 +1,5 @@
 /**
- * dsh-caveman — Caveman terse-talk mode, as a DeepSeek Harness plugin.
+ * dsh-caveman: Caveman terse-talk mode, as a DeepSeek Harness plugin.
  *
  * Four capabilities, all mounted through public Cordis extension points:
  *
@@ -87,8 +87,8 @@ export interface Config {
  *
  * Both fields are volatile, the only kind the settings document accepts: a
  * change commits into the running config without remounting the plugin. Each is
- * read at the moment it is used — the level at every prompt assembly, the size
- * cap at every compress call — so an edit from the Plugins card takes effect on
+ * read at the moment it is used (the level at every prompt assembly, the size
+ * cap at every compress call), so an edit from the Plugins card takes effect on
  * the next use rather than on a restart.
  *
  * `defaultMode` carries no default, so absence keeps flowing to
@@ -227,7 +227,7 @@ export function apply(ctx: HostContext, config: Config): void {
    * The override is set before the settings write is awaited: the durable
    * `user/message` event arrives before the turn's prompt is assembled, and
    * awaiting the document would let that same turn assemble with the ruleset
-   * still injected — the one turn the user just asked to end. A committed
+   * still injected: the one turn the user just asked to end. A committed
    * document then becomes the source of truth again, so the card and the
    * prompt cannot disagree.
    */
@@ -318,7 +318,7 @@ function userMessageText(data: unknown): string | undefined {
  * Read this session's cumulative provider-reported usage through the
  * token-meter `tokenUsage` projection, when the host mounts it.
  *
- * Counts only what the provider reported — never a saving, a percentage, or
+ * Counts only what the provider reported: never a saving, a percentage, or
  * a cost. `undefined` when the service, the session, or the unit is absent.
  * @param scope - the tools-callback scope, which may carry `sessionProjections`.
  * @param exec - the tool execution, carrying the calling agent's session.
@@ -455,7 +455,7 @@ interface SessionUsage {
 
 /**
  * Read the optional `usage` flag's field: the session totals when asked and
- * available, otherwise nothing. Savings are never inferred — the log has no
+ * available, otherwise nothing. Savings are never inferred: the log has no
  * unbuilt baseline to subtract.
  */
 function usageField(
@@ -471,7 +471,7 @@ function usageField(
 }
 
 /**
- * Build the model-facing compress tool. Local deterministic rules only —
+ * Build the model-facing compress tool. Local deterministic rules only:
  * no model call, no bytes leave the machine.
  * @param maxFileSize - reads the configured size cap in bytes, so a card edit
  * applies to the next call.
@@ -599,7 +599,7 @@ function renderModeResult(value: unknown): string {
   const onceLine = once !== undefined ? ` Reply to this call in ${once}; the persisted level is unchanged.` : ''
   if (usage === undefined) return `${core}${onceLine}`
   const line = (name: string): number => typeof usage[name] === 'number' ? usage[name] as number : 0
-  return `${core}${onceLine} Session usage so far — input ${line('input')}, output ${line('output')}, cache read ${line('cacheRead')}, cache write ${line('cacheWrite')}. Savings unknown without a measured comparison.`
+  return `${core}${onceLine} Session usage so far: input ${line('input')}, output ${line('output')}, cache read ${line('cacheRead')}, cache write ${line('cacheWrite')}. Savings unknown without a measured comparison.`
 }
 
 /**

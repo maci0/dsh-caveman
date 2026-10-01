@@ -15,8 +15,8 @@ test('the plugin mounts into a real Cordis composition and unloads cleanly', asy
   const ctx = new Context()
   await ctx.plugin(SkillRegistry)
 
-  // The plugin declares the structural subset of the host context it uses — as
-  // an out-of-tree plugin must — so its `apply` signature is narrower than
+  // The plugin declares the structural subset of the host context it uses (as
+  // an out-of-tree plugin must), so its `apply` signature is narrower than
   // Cordis's `Context`. The real context satisfies it at runtime.
   const fiber = await ctx.plugin(Caveman as unknown as Parameters<typeof ctx.plugin>[0], { defaultMode: 'full' })
 

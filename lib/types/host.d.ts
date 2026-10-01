@@ -149,8 +149,6 @@ export interface HostContext {
     readonly commands: {
         register(definition: CommandDefinitionLike): Disposable;
     };
-    readonly settings: SettingsServiceLike;
-    readonly sessionProjections?: SessionProjectionsLike;
 }
 /** The slice of the settings service this plugin uses. */
 export interface SettingsServiceLike {

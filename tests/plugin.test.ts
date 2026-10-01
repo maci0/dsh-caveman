@@ -762,3 +762,22 @@ test('the shipped bundle row leaves the startup level to the chain', async () =>
   // a packaged `defaultMode` would make both dead letters.
   assert.equal(row.config?.['defaultMode'], undefined)
 })
+
+
+test('an older refused mode write cannot undo a newer normal-mode message', async () => {
+  const host = createHost()
+  apply(host.ctx, host.config)
+  let rejectOld!: (error: Error) => void
+  let writes = 0
+  const settings = host.ctx.get('settings') as { update: () => Promise<void> }
+  settings.update = () => ++writes === 1
+    ? new Promise((_resolve, reject) => { rejectOld = reject })
+    : Promise.reject(new Error('read-only'))
+  const old = callTool(host, { mode: 'lite' })
+  host.emit({ type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'stop caveman' }] } })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(sectionText(host.captured.sections[0]), '')
+  rejectOld(new Error('read-only'))
+  await old
+  assert.equal(sectionText(host.captured.sections[0]), '', 'the older fallback must not reactivate the mode')
+})

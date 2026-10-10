@@ -34,10 +34,12 @@ from [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (MIT):
 > would win).
 
 ```sh
-dsh plugin --profile web add github:maci0/dsh-caveman#v0.16.2
+dsh plugin --profile web add github:maci0/dsh-caveman#v0.16.3
 ```
 
-Pin a release tag: a bare `github:` spec floats on `main`. To upgrade, run the same command with the newer tag, then restart `dsh web` (bundle layers compose at boot).
+Pin a release tag: a bare `github:` spec floats on `main`. To upgrade, run the
+same command with the newer tag, then restart `dsh web` (bundle layers compose
+at boot).
 
 ## Use it
 
@@ -171,7 +173,7 @@ provider, the compress pipeline, and a real Cordis composition mount next to the
 skill registry. `sync:check` exits 1 and lists stale files (2 on a usage or fetch error); `sync` rewrites verbatim
 copies and leaves adapted ones for manual re-adaptation. Both accept `--ref <tag|sha>`
 (default `main`). The network assertion runs only with `DSH_SYNC_CHECK=1`; plain
-`bun test` stays offline. To uninstall, run `dsh plugin --profile web remove dsh-caveman`
+`bun test` stays offline. To uninstall, run `dsh plugin --profile web remove @maci0/dsh-caveman`
 and drop any `id: caveman` override from `~/.dsh/profiles/<profile>/cordis.patch.yml`.
 
 ## Attribution and license

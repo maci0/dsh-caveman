@@ -10,4 +10,4 @@
 # dedupe ids, and a second row would register the plugin twice.
 - insert:
     - id: caveman
-      name: 'dsh-caveman'
+      name: '@maci0/dsh-caveman'

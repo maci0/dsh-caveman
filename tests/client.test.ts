@@ -142,7 +142,7 @@ function loadBundle(snapshot: Snapshot, calls: { set: unknown[][]; unset: unknow
   }
 
   assert.ok(loaded, 'the bundle registered itself on window.__ModuleLoader__')
-  assert.equal(loaded.id, 'dsh-caveman')
+  assert.equal(loaded.id, '@maci0/dsh-caveman')
 
   const exported = loaded.factory(requireFn)
   ;(exported['apply'] as (ctx: unknown) => void)(ctx)
@@ -238,7 +238,7 @@ test('the card binds the caveman namespace and registers into the plugins tab', 
   assert.deepEqual(registeredLocales, ['caveman'])
   assert.equal(registered.length, 2)
   assert.equal(registered[0]?.entry['name'], 'plugins.row.config')
-  assert.equal(registered[0]?.entry['key'], 'dsh-caveman#caveman')
+  assert.equal(registered[0]?.entry['key'], '@maci0/dsh-caveman#caveman')
   // The documented keyed-card fields: `locale` names the namespace this card's
   // copy comes from. `inject` stays absent because the card closes over its own
   // bound scope and takes no injected props.

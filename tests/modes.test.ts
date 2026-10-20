@@ -7,6 +7,7 @@ import {
   normalizeCommandMode,
   normalizeMode,
   resolveDefaultMode,
+  splitModeCommand,
 } from '../src/modes.ts'
 
 test('normalizeMode accepts all seven persistable levels', () => {
@@ -24,6 +25,35 @@ test('normalizeCommandMode adds the bare wenyan shorthand', () => {
   assert.equal(normalizeCommandMode('wenyan'), 'wenyan-full')
   assert.equal(normalizeCommandMode('ultra'), 'ultra')
   assert.equal(normalizeCommandMode('shrug'), undefined)
+})
+
+test('normalizeCommandMode tolerates invisible and alternative spellings', () => {
+  assert.equal(normalizeCommandMode('wenyan-ultra'), 'wenyan-ultra')
+  assert.equal(normalizeCommandMode('\u200bwenyan-ultra'), 'wenyan-ultra')
+  assert.equal(normalizeCommandMode('wenyan\u00a0ultra'), 'wenyan-ultra')
+  assert.equal(normalizeCommandMode('wenyan_ultra'), 'wenyan-ultra')
+  assert.equal(normalizeCommandMode('  Wenyan-Ultra  '), 'wenyan-ultra')
+})
+
+test('splitModeCommand keeps the level and reports the message typed after it', () => {
+  assert.deepEqual(splitModeCommand('wenyan-ultra'), { mode: 'wenyan-ultra', rest: '' })
+  assert.deepEqual(splitModeCommand('  Wenyan-Ultra  '), { mode: 'wenyan-ultra', rest: '' })
+  assert.deepEqual(splitModeCommand('wenyan-ultra 已重启，验证caveman'), {
+    mode: 'wenyan-ultra',
+    rest: '已重启，验证caveman',
+  })
+  assert.deepEqual(splitModeCommand('full explain this'), { mode: 'full', rest: 'explain this' })
+  // Multi-word spellings and deactivation phrases beat their first word.
+  assert.deepEqual(splitModeCommand('wenyan full explain'), { mode: 'wenyan-full', rest: 'explain' })
+  assert.deepEqual(splitModeCommand('normal mode please'), { mode: 'off', rest: 'please' })
+  assert.deepEqual(splitModeCommand('stop caveman'), { mode: 'off', rest: '' })
+  assert.deepEqual(splitModeCommand('\u200bwenyan-ultra why'), { mode: 'wenyan-ultra', rest: 'why' })
+  // A leading word that is not a level is an error, not a silent level change.
+  assert.equal(splitModeCommand('shrug explain'), undefined)
+  assert.equal(splitModeCommand(''), undefined)
+  // An ordinary sentence starting with a level word still sets that level; the
+  // command only runs when the human chooses it.
+  assert.deepEqual(splitModeCommand('off topic'), { mode: 'off', rest: 'topic' })
 })
 
 test('resolveDefaultMode prefers config, then env, then file, then full, and names the source', () => {

@@ -32,10 +32,10 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import {
   buildModeInstructions,
   isDeactivationCommand,
-  normalizeCommandMode,
   normalizeMode,
   resolveDefaultMode,
   RUNTIME_MODES,
+  splitModeCommand,
   type CavemanMode,
   type ResolvedLevel,
 } from './modes.ts'
@@ -681,20 +681,30 @@ async function handleModeCommand(
   getMode: () => CavemanMode,
   setMode: (next: CavemanMode) => Promise<{ previous: CavemanMode; mode: CavemanMode; changed: boolean }>,
 ): Promise<CommandResultLike> {
-  const input = invocation.rawInput.trim().toLowerCase()
+  const input = invocation.rawInput.trim()
 
   if (input === '') return { kind: 'success', text: modeSentence(getMode(), getMode(), false) }
 
-  const requested = isDeactivationCommand(input) ? 'off' : normalizeCommandMode(input)
-  if (requested === undefined) {
+  // The command box carries everything typed after `/caveman`, including a
+  // message meant for the model. Only the leading level is ours; the rest is
+  // reported back instead of being taken for an unknown level.
+  const parsed = splitModeCommand(input)
+  if (parsed === undefined) {
     return {
       kind: 'error',
-      text: `Unknown caveman level "${invocation.rawInput.trim()}". Use one of: ${RUNTIME_MODES.join(', ')}.`,
+      // JSON.stringify so an invisible character (zero-width space, NBSP) shows
+      // up as an escape instead of producing an apparently valid level name.
+      text: `Unknown caveman level ${JSON.stringify(input)}. Use one of: ${RUNTIME_MODES.join(', ')}.`,
     }
   }
 
-  const { previous, mode, changed } = await setMode(requested)
-  return { kind: 'success', text: modeSentence(mode, previous, changed) }
+  const { previous, mode, changed } = await setMode(parsed.mode)
+  const sentence = modeSentence(mode, previous, changed)
+  if (parsed.rest === '') return { kind: 'success', text: sentence }
+  return {
+    kind: 'success',
+    text: `${sentence} Trailing text was not sent: ${JSON.stringify(parsed.rest)}. Send it as its own message.`,
+  }
 }
 
 /**

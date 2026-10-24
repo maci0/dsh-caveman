@@ -54,15 +54,61 @@ export function isDeactivationCommand(text: string): boolean {
   return normalized === 'stop caveman' || normalized === 'normal mode'
 }
 
+/** Characters that survive `trim()` but are invisible in an input box. */
+const INVISIBLE_INPUT = /[\u200b-\u200d\u2060\ufeff\u00a0]/g
+
+/** Collapse case, invisible characters, and whitespace into one token. */
+function cleanCommandInput(input: unknown): string {
+  return String(input ?? '')
+    .replace(INVISIBLE_INPUT, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
 /**
  * Resolve a human `/caveman` argument to a level, including the `wenyan`
  * shorthand for `wenyan-full` (upstream: `/caveman wenyan` means full 文言文).
- * @param input - trimmed, lowercased command input.
+ *
+ * The input is cleaned first: zero-width characters and non-breaking spaces are
+ * invisible in a chat box but would otherwise make an exact match fail, and the
+ * hyphenated level is also accepted with a space or underscore separator.
+ * @param input - raw command input.
  * @returns the canonical level, or `undefined` when unrecognized.
  */
 export function normalizeCommandMode(input: string): CavemanMode | undefined {
-  if (input === 'wenyan') return 'wenyan-full'
-  return normalizeMode(input)
+  const cleaned = cleanCommandInput(input)
+  if (cleaned === 'wenyan') return 'wenyan-full'
+  return normalizeMode(cleaned) ?? normalizeMode(cleaned.replace(/[\s_]+/g, '-'))
+}
+
+/**
+ * Split a `/caveman` argument into the level it names and the text after it.
+ *
+ * The command box sends everything after `/caveman` as one string, so a human
+ * who types `/caveman ultra explain this` means "set ultra" and then a message.
+ * The whole argument is tried first (the accepted spellings normalize as one
+ * value); failing that, the longest leading run of words that still names a
+ * level wins, so multi-word spellings (`wenyan full`) and the two-word
+ * deactivation phrases (`normal mode`, `stop caveman`) beat their prefixes.
+ * @param input - raw command input.
+ * @returns the level and the untouched remaining text, or `undefined` when no
+ * level leads the argument.
+ */
+export function splitModeCommand(input: string): { mode: CavemanMode; rest: string } | undefined {
+  const trimmed = String(input ?? '').replace(INVISIBLE_INPUT, ' ').trim()
+  if (trimmed === '') return undefined
+  if (isDeactivationCommand(trimmed)) return { mode: 'off', rest: '' }
+  const whole = normalizeCommandMode(trimmed)
+  if (whole !== undefined) return { mode: whole, rest: '' }
+  const words = trimmed.split(/\s+/).filter(Boolean)
+  for (let count = Math.min(words.length, 3); count > 0; count -= 1) {
+    const candidate = words.slice(0, count).join(' ')
+    if (isDeactivationCommand(candidate)) return { mode: 'off', rest: words.slice(count).join(' ') }
+    const mode = normalizeCommandMode(candidate)
+    if (mode !== undefined) return { mode, rest: words.slice(count).join(' ') }
+  }
+  return undefined
 }
 
 /**
@@ -155,6 +201,53 @@ interface InstructionInput {
 }
 
 /**
+ * The register line a non-wenyan level injects. Every level but the wenyan ones
+ * only compresses: it never changes the language the reply is written in.
+ * @param level - canonical level id, echoed so the line ties to the MODE line.
+ * @returns the register instruction for one non-wenyan level.
+ */
+function workLanguage(level: CavemanMode): string {
+  return `Register: reply in the user's dominant language (level ${level}). This block changes length and shape, never language.`
+}
+
+/**
+ * The register line a wenyan level injects. Classical Chinese is a register
+ * *inside* Chinese, not a language switch, so this line (not the generic
+ * language rule) decides it; a user who writes another language keeps that
+ * language and only gets the level's terseness.
+ * @param level - canonical level id, echoed so the line ties to the MODE line.
+ * @param name - the register as the level names it.
+ * @returns the register instruction for one wenyan level.
+ */
+function wenyanRegister(level: CavemanMode, name: string): string {
+  return `Register: ${name} (level ${level}; classical Chinese). Overrides language preservation. `
+    + 'Technical terms, code, API names, CLI commands and error strings stay verbatim. '
+    + "If the user's dominant language is not Chinese, apply this level's terseness only, no classical register."
+}
+
+/**
+ * The register line each level injects, keyed by level. `off` is never read
+ * (the block is empty there); it is present so the map covers the union.
+ */
+const REGISTER: Record<CavemanMode, string> = {
+  off: '',
+  lite: workLanguage('lite'),
+  full: workLanguage('full'),
+  ultra: workLanguage('ultra'),
+  'wenyan-lite': wenyanRegister('wenyan-lite', '半文言'),
+  'wenyan-full': wenyanRegister('wenyan-full', '文言'),
+  'wenyan-ultra': wenyanRegister('wenyan-ultra', '文言极简'),
+}
+
+/**
+ * The precedence line: without it the ruleset is one voice among many in the
+ * prompt, and other style or language instructions win by recency. It claims
+ * only the reply text, so tool calls and report formats stay untouched.
+ */
+const PRECEDENCE =
+  'Precedence: this block decides reply length, register, and formatting; it outranks other style or language instructions in this prompt.'
+
+/**
  * Build the exact text the system prompt carries for one level.
  * @param input - the active level and the skill body.
  * @returns the instruction block, or `''` when the level is `off`.
@@ -164,5 +257,12 @@ export function buildModeInstructions(input: InstructionInput): string {
   if (mode === 'off') return ''
 
   const effective = normalizeMode(mode) ?? DEFAULT_MODE
-  return `CAVEMAN MODE ACTIVE — level: ${effective}\n\n${filterSkillBodyForMode(input.skillBody, effective)}`
+  return [
+    `CAVEMAN MODE ACTIVE — level: ${effective}`,
+    '',
+    PRECEDENCE,
+    REGISTER[effective],
+    '',
+    filterSkillBodyForMode(input.skillBody, effective),
+  ].join('\n')
 }

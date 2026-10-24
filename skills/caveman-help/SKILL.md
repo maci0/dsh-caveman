@@ -41,7 +41,7 @@ Say "stop caveman" or "normal mode". Resume anytime with `/caveman`.
 
 ## Language
 
-Keep user's language by default — reply in the language user writes, never switch regardless of example text or multilingual context elsewhere. Compress the style, not the language. Technical terms, code, commands, commit types, and exact error strings stay verbatim unless user ask for translation.
+Reply in the user's dominant language, whatever the example text or multilingual context elsewhere says. A wenyan level does not switch language: its Register line keeps the register classical Chinese inside Chinese, and a user writing another language gets that level's terseness only. Technical terms, code, commands, commit types, and exact error strings stay verbatim.
 
 ## Configure Default Mode
 

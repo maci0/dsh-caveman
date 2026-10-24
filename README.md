@@ -51,6 +51,10 @@ version, then restart `dsh web` (bundle layers compose at boot).
 /caveman off       -> Caveman off (was wenyan-full). Normal behavior.
 ```
 
+Everything typed after the level is reported back, not sent: the command box
+carries it as one argument, so `/caveman full explain this` sets `full` and
+tells you the trailing text still needs its own message.
+
 Typing **stop caveman** or **normal mode** as an ordinary message has the same
 effect as `/caveman off`, and it lands on the turn that carried it. Only the
 human's own words count: injected context riding the same event stream cannot
@@ -158,13 +162,18 @@ bun run sync        # overwrite stale verbatim files (refuses dirty tree w/o --f
 dsh loads plugins on Node ^22.19.0 || >=24.0.0; development and tests run on bun.
 
 The harness packages this plugin imports at runtime (`@deepseek-ai/dsh-tools`,
-`@deepseek-ai/dsh-skill`, `@deepseek-ai/schemastery`) are **dependencies
-pinned to the harness's own versions**, so the profile resolves one physical
-copy; `yaml` is the only non-harness dependency. The pin is deliberate.
-`@deepseek-ai/dsh-tools` keys its runtime scheduler on a module-level `Symbol`,
-so a second physical copy in the profile hands the tool layer a different
-symbol than the host's and every tool call dies with
-`Cannot read properties of undefined (reading 'prepare')`.
+`@deepseek-ai/dsh-skill`, `@deepseek-ai/schemastery`) are **peer dependencies**:
+the running Harness installation already supplies one copy of each, and the
+profile's resolver falls back to it. Declaring them as `dependencies` makes the
+profile hoist a second, version-pinned copy; the plugin then resolves that copy
+while the host keeps its own, so `@deepseek-ai/dsh-tools`' module-level `Symbol`
+no longer matches the tool layer's and every tool call dies with
+`Cannot read properties of undefined (reading 'prepare')`. Worse, after a
+Harness upgrade the pinned copy is stale and the host itself fails to start
+(`startup failed: 1 required plugin did not activate`, with every plugin that
+needs `tools` listed as waiting). The `devDependencies` repeat the same versions
+for building and typechecking; `yaml` is the only third-party runtime
+dependency.
 
 For local development, install the checkout into a profile with
 `dsh plugin --profile <name> add <path-to-checkout>`.

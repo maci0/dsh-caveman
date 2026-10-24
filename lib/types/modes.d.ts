@@ -36,10 +36,31 @@ export declare function isDeactivationCommand(text: string): boolean;
 /**
  * Resolve a human `/caveman` argument to a level, including the `wenyan`
  * shorthand for `wenyan-full` (upstream: `/caveman wenyan` means full 文言文).
- * @param input - trimmed, lowercased command input.
+ *
+ * The input is cleaned first: zero-width characters and non-breaking spaces are
+ * invisible in a chat box but would otherwise make an exact match fail, and the
+ * hyphenated level is also accepted with a space or underscore separator.
+ * @param input - raw command input.
  * @returns the canonical level, or `undefined` when unrecognized.
  */
 export declare function normalizeCommandMode(input: string): CavemanMode | undefined;
+/**
+ * Split a `/caveman` argument into the level it names and the text after it.
+ *
+ * The command box sends everything after `/caveman` as one string, so a human
+ * who types `/caveman ultra explain this` means "set ultra" and then a message.
+ * The whole argument is tried first (the accepted spellings normalize as one
+ * value); failing that, the longest leading run of words that still names a
+ * level wins, so multi-word spellings (`wenyan full`) and the two-word
+ * deactivation phrases (`normal mode`, `stop caveman`) beat their prefixes.
+ * @param input - raw command input.
+ * @returns the level and the untouched remaining text, or `undefined` when no
+ * level leads the argument.
+ */
+export declare function splitModeCommand(input: string): {
+    mode: CavemanMode;
+    rest: string;
+} | undefined;
 /**
  * Where the level in use came from: the row's `defaultMode` (which the
  * settings document edits), `CAVEMAN_DEFAULT_MODE`, the upstream config file,

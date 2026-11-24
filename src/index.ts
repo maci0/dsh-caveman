@@ -304,7 +304,7 @@ export function apply(ctx: HostContext, config: Config): void {
       kind: 'exact',
       path: LEVEL_ROUTE,
       handler: (req, res) => {
-        const rejection = scope.connection.requestRejection(req)
+        const rejection = scope.connection.requestRejection?.(req)
         if (rejection !== undefined) {
           res.statusCode = rejection
           res.end()

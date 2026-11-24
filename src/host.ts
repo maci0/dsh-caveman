@@ -181,8 +181,11 @@ export interface WebServerLike {
 
 /** The composition's trust fence for HTTP requests. */
 export interface ConnectionLike {
-  /** The rejection status for an untrusted or unauthenticated request, else `undefined`. */
-  requestRejection(request: { readonly headers: object | undefined }): 401 | 403 | undefined
+  /**
+   * The rejection status for an untrusted or unauthenticated request, else `undefined`.
+   * Absent where the web server admits each route itself (route `auth`, default `required`).
+   */
+  requestRejection?(request: { readonly headers: object | undefined }): 401 | 403 | undefined
 }
 
 /** The slice of the settings service this plugin uses. */
